@@ -1,0 +1,14 @@
+.DS_Store
+.active-project
+.terraform/
+.terraform-plugin-cache/
+*.tfplan
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+terraform.tfvars
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json

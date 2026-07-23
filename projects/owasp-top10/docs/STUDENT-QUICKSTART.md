@@ -1,0 +1,259 @@
+# Student Quickstart
+
+이 문서는 수강생이 본인 AWS 계정에 실습 VM과 컨테이너 앱을 배포하는 절차입니다.
+
+## 0. 준비물
+
+- AWS 계정과 결제 수단
+- AWS CLI v2
+- Session Manager Plugin
+- Terraform 1.x
+- Git
+- 강사가 공지한 AWS 리전
+- 비용 알람을 받을 이메일
+
+## 1. AWS CLI 설정
+
+```bash
+aws configure --profile owasp-llm
+aws sts get-caller-identity --profile owasp-llm
+```
+
+`aws sts get-caller-identity`가 본인 계정 ARN을 출력하면 통과입니다.
+
+## 2. GPU quota 확인
+
+기본값 `g6.xlarge`는 4 vCPU를 사용합니다. 아래 quota가 4 이상이어야 합니다.
+
+```bash
+aws service-quotas get-service-quota \
+  --profile owasp-llm --region us-east-1 \
+  --service-code ec2 --quota-code L-DB2E81BA \
+  --query "Quota.{Name:QuotaName,Value:Value}"
+```
+
+0 또는 4 미만이면 AWS Console의 Service Quotas에서 `Running On-Demand G and VT instances` 증설을 신청하세요.
+
+## 3. 로컬 preflight
+
+저장소 루트에서 실행합니다.
+
+```bash
+AWS_PROFILE=owasp-llm AWS_REGION=us-east-1 \
+  bash infrastructure/scripts/student/preflight-local.sh
+```
+
+`Preflight PASS`가 나오면 다음 단계로 진행합니다.
+
+## 4. Terraform 변수 작성
+
+```bash
+cd infrastructure/terraform
+cp terraform.tfvars.example terraform.tfvars
+```
+
+`terraform.tfvars`에서 최소 아래 값을 수정합니다.
+
+```hcl
+aws_profile = "owasp-llm"
+region      = "us-east-1"
+course_id   = "owasp-llm-2026"
+
+student_ids = ["yourname"]
+
+course_dates = [
+  "2026-09-07",
+  "2026-09-08",
+  "2026-09-09",
+  "2026-09-10",
+  "2026-09-11",
+]
+
+# AMI ID는 직접 입력하지 않습니다.
+# Terraform이 기존 검증 계열의 최신 DLAMI를 자동 조회합니다.
+
+allowed_ingress_cidr = "127.0.0.1/32"
+
+# 기본값은 수동 설치입니다.
+enable_user_data_bootstrap = false
+
+daily_budget_usd  = 20
+course_budget_usd = 120
+alert_email       = "student@example.com"
+
+# 기본 인스턴스 타입은 g6.xlarge입니다.
+# instance_type = "g6.xlarge"
+```
+
+## 5. VM 생성
+
+```bash
+terraform init
+terraform plan
+terraform apply -auto-approve
+```
+
+성공하면 `ami_id`, `ami_name`, `instance_ids`, `public_ips`, `manual_install_commands`, `start_commands`, `stop_commands`, `ssm_session_commands`가 출력됩니다.
+
+## 6. SSM 접속
+
+기본값에서는 EC2만 생성되고 실습 앱은 아직 설치되지 않습니다. 먼저 SSM으로 인스턴스에 접속합니다.
+
+저장소 루트에서 실행합니다.
+
+```bash
+export STUDENT=yourname
+export INSTANCE_ID=$(AWS_PROFILE=owasp-llm AWS_REGION=us-east-1 STUDENT="$STUDENT" \
+  bash infrastructure/scripts/student/instance-id.sh)
+
+aws ssm start-session --profile owasp-llm --region us-east-1 \
+  --target "$INSTANCE_ID"
+```
+
+## 7. 실습 앱 직접 설치
+
+SSM 세션 안에서 아래 명령을 실행합니다. Terraform output의 `manual_install_commands`에 같은 명령이 표시됩니다.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/gasbugs/owasp-llm-lab-setup-guide/main/infrastructure/scripts/student/install-lab.sh | sudo bash
+```
+
+설치 중 수행되는 작업은 다음과 같습니다.
+
+- Podman 설치
+- NVIDIA CDI 설정
+- Ollama 컨테이너 실행
+- `llama3.1:8b-instruct-q4_K_M` 생성 모델과 `bge-m3:latest` embedding 모델 pull 및 warm-up
+- LLM08 서버 vector 분석용 `~/work/llm08-analysis-venv` 준비(NumPy만 설치)
+- 실습 포털 실행: `lab-portal`, port `8080`
+- Day별 취약 RAG 앱 실행: `lab-day1-vuln-rag`~`lab-day5-vuln-rag`, ports `8000`, `8010`, `8011`, `8012`, `8013`
+- 취약 Agent 앱 실행: `lab-day3-vuln-agent`, port `8001`
+- LLMGoat 실행: `lab-llmgoat`, port `5000`
+- DVLA 실행: `lab-day3-dvla`, port `8501`
+- Day 4 LLM03 fake model registry 실행: `lab-day2-fake-registry`, port `8002` (unit 이름은 호환성을 위해 유지)
+- EC2 start 후 자동 재시작을 위한 Podman Quadlet systemd user unit 등록
+- Terraform 기본 설정으로 매일 17:30 KST Lambda 기반 EC2 자동 중지 등록. `auto_stop_schedule_mode`로 야간 반복 모드 또는 custom cron 선택 가능
+
+설치 로그는 EC2 안의 `/var/log/owasp-llm-lab-install.log`에서 확인할 수 있습니다.
+
+### LLM08 추가 셋업
+
+LLM08은 일반 컨테이너 설치 외에 embedding 모델/API, NumPy 분석 venv, 학습자 미니 앱 scaffold와 loopback port forwarding을 함께 확인해야 합니다. 강사·콘텐츠 배포자가 [LLM08 embedding lab setup](LLM08-SETUP.md)의 **publish gate를 먼저 통과해 공지한 40자리 setup commit**을 받은 뒤, 새 EC2 또는 기존 EC2 경로를 선택해 진행하세요. 수강생은 publish gate 때문에 로컬 PC에 Podman을 추가 설치하지 않습니다.
+
+이 문서나 코드가 아직 로컬 워킹트리에만 있고 공개 `origin/main` commit 또는 그 commit의 GHCR 이미지가 없다면 수강생 환경은 준비된 것이 아닙니다. `main`/`latest`를 무조건 재실행하지 말고, 강사가 공지한 40자리 setup commit과 `sha-<commit>` 이미지가 모두 공개된 뒤 설치합니다.
+
+LLM08 설치가 끝나면 최소 다음 계약을 확인합니다.
+
+- `lab-ollama`에 `bge-m3:latest`가 존재
+- `http://localhost:8012/healthz`가 `default_scenario=day4`
+- 인증된 `POST /api/embed`가 양의 `dimensions`와 동일 길이 vector를 반환
+- `~/work/llm08-analysis-venv`에서 NumPy import 가능
+- commit에 고정된 `examples/llm08/mini_vector_search_app.py`를 별도 학습자 작업본으로 복사 가능
+- 앱/API 증거를 보존하고 미니 앱을 정리한 다음, 모든 작업의 마지막에 EC2를 중지해 `stopped` 확인
+
+자동 설치가 필요한 경우에는 `terraform.tfvars`에 아래 값을 넣은 뒤 새 인스턴스를 만들면 됩니다.
+
+```hcl
+enable_user_data_bootstrap = true
+```
+
+강사가 commit 고정값을 공지한 경우에는 `lab_setup_repo_raw_url`, `lab_image_namespace`, `lab_image_tag`도 공지값을 그대로 사용합니다. 이 값들은 최초 `terraform apply` 전에 설정해야 합니다. 기존 인스턴스에서 값을 바꿔도 `user_data_replace_on_change = false` 설정 때문에 자동 설치가 다시 실행되지는 않습니다.
+
+## 8. 컨테이너 상태 확인
+
+SSM 세션 안에서 실행합니다.
+
+```bash
+sudo -u ubuntu podman ps --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
+curl -s http://localhost:8080/ | head
+curl -s http://localhost:11434/api/tags | head
+curl -s http://localhost:8000/healthz
+curl -s http://localhost:8010/healthz
+curl -s http://localhost:8011/healthz
+curl -s http://localhost:8012/healthz
+curl -s http://localhost:8013/healthz
+curl -s http://localhost:8001/healthz
+curl -s http://localhost:5000/healthz
+curl -s http://localhost:8002/api/v1/models | head
+```
+
+## 9. 상태를 바꾼 실습만 최소 복원
+
+일반 채팅처럼 읽기만 한 실습은 복원하지 않습니다. Python 메모리만 바꾼
+실습은 해당 Quadlet unit을 한 번 재시작하고, 이어서 raw `/healthz`를
+확인합니다. 아래에서 자신이 방금 수행한 실습의 두 명령만 실행합니다.
+
+| 실습 | 재시작 명령 | 원본 확인 명령 |
+|---|---|---|
+| LLM01-B | `systemctl --user restart lab-day1-vuln-rag.service` | `curl -sS http://localhost:8000/healthz` |
+| LLM04 | `systemctl --user restart lab-day2-vuln-rag.service` | `curl -sS http://localhost:8010/healthz` |
+| LLM05 | `systemctl --user restart lab-day3-vuln-rag.service` | `curl -sS http://localhost:8011/healthz` |
+| LLM06 삭제 실습 | `systemctl --user restart lab-day3-vuln-agent.service` | `curl -sS http://localhost:8001/healthz` |
+| LLMGoat 상태 변경 실습 | `systemctl --user restart lab-llmgoat.service` | `curl -sS http://localhost:5000/healthz` |
+
+LLM10은 timeout 뒤 Day 5 앱과 공유 Ollama queue를 정해진 순서로 복구해야
+하므로 이 실습에만 allowlist 명령을 사용합니다.
+
+```bash
+reset-lab llm10
+```
+
+```bash
+curl -sS http://localhost:8013/healthz
+```
+
+이 복원 명령들은 `~/work`의 evidence와 Capstone, Ollama 모델, LLMGoat
+모델/cache를 건드리지 않습니다. 실습별 저장 위치와 복원 범위는 [Lab state
+and reset policy](LAB-RESET-POLICY.md)에 정리되어 있습니다.
+
+SSM 포트포워딩이나 수강생이 실행한 미니 앱을 종료하는 일, EC2를 중지하는
+일은 상태 복원과 별개입니다.
+
+## 10. 설치 자체를 다시 해야 할 때
+
+설치가 중간에 실패했거나 Quadlet 정의 자체가 손상된 경우에만 SSM 세션 안에서
+클린업 후 설치를 다시 실행합니다. 일반 실습 상태 복원에는 이 절차를 사용하지
+않습니다.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/gasbugs/owasp-llm-lab-setup-guide/main/infrastructure/scripts/student/cleanup-lab.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/gasbugs/owasp-llm-lab-setup-guide/main/infrastructure/scripts/student/install-lab.sh | sudo bash
+```
+
+모델 캐시와 생성 파일까지 지우려면 `--purge`를 사용합니다. 이 경우 다음 설치에서 모델을 다시 받아 시간이 더 걸립니다.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/gasbugs/owasp-llm-lab-setup-guide/main/infrastructure/scripts/student/cleanup-lab.sh | sudo bash -s -- --purge
+```
+
+## 11. 매일 시작
+
+```bash
+AWS_PROFILE=owasp-llm AWS_REGION=us-east-1 STUDENT=yourname \
+  bash infrastructure/scripts/student/start-lab.sh
+```
+
+## 12. 매일 종료
+
+```bash
+AWS_PROFILE=owasp-llm AWS_REGION=us-east-1 STUDENT=yourname \
+  bash infrastructure/scripts/student/stop-lab.sh
+```
+
+이 명령을 실행하면 EC2 시간당 요금이 멈춥니다. EBS 비용은 남습니다.
+
+## 13. 강의 종료 후 삭제
+
+보존할 작업물을 먼저 개인 GitHub repo에 push하세요.
+
+```bash
+cd infrastructure/terraform
+terraform destroy
+```
+
+## 14. 절대 하지 말 것
+
+- `allowed_ingress_cidr = "0.0.0.0/0"`로 바꾸지 마세요.
+- Access Key와 Secret을 GitHub에 올리지 마세요.
+- `terraform.tfvars`, `.tfstate`, `.pem` 파일을 commit하지 마세요.
+- 취약 컨테이너를 회사/고객사/공개 서비스 환경에 배포하지 마세요.

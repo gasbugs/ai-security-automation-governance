@@ -1,0 +1,14 @@
+allow_spoke_icmp   = true
+aws_profile        = "aws-security-lab"
+aws_region         = "ap-northeast-2"
+blocked_domains    = [".example.com"]
+environment        = "lab"
+inspection_vpc_cidr = "10.255.0.0/16"
+instance_type      = "t3.micro"
+project_name       = "aws-firewall-tgw"
+retention_days     = 1
+
+spoke_vpc_cidrs = {
+  spoke_a = "10.10.0.0/16"
+  spoke_b = "10.20.0.0/16"
+}
