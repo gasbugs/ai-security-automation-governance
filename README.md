@@ -3,6 +3,9 @@
 한 저장소 안에 두 개의 독립 프로젝트를 둔 강의용 workspace입니다. 두 프로젝트는
 Terraform root, 변수, 상태, setup/destroy 진입점이 완전히 분리되어 있습니다.
 
+AWS 계정 권한, 인스턴스 사양, GPU Quota와 강의 전 점검 사항은
+[사전 준비 가이드](PREREQUISITES.md)를 먼저 확인하세요.
+
 ```text
 aws-security-terraform-practice/
 ├── projects/
