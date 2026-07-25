@@ -8,6 +8,11 @@ output "ami_name" {
   value       = data.aws_ami.lab_base.name
 }
 
+output "availability_zone" {
+  description = "계정 ID 기반 자동 분산 또는 availability_zone override로 선택된 AZ"
+  value       = local.selected_availability_zone
+}
+
 output "student_role_arns" {
   description = "수강생별 IAM Role ARN"
   value       = { for id in var.student_ids : id => aws_iam_role.student[id].arn }

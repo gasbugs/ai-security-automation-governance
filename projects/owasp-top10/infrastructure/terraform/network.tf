@@ -20,16 +20,65 @@ resource "aws_vpc" "main" {
 
 data "aws_availability_zones" "available" {
   state = "available"
+
+  filter {
+    name   = "zone-type"
+    values = ["availability-zone"]
+  }
+}
+
+data "aws_ec2_instance_type_offerings" "gpu" {
+  filter {
+    name   = "instance-type"
+    values = [var.instance_type]
+  }
+
+  location_type = "availability-zone"
+}
+
+locals {
+  gpu_availability_zones = sort(tolist(setintersection(
+    toset(data.aws_availability_zones.available.names),
+    toset(data.aws_ec2_instance_type_offerings.gpu.locations),
+  )))
+  availability_zone_seed = parseint(
+    substr(md5(data.aws_caller_identity.current.account_id), 0, 8),
+    16,
+  )
+  automatic_availability_zone = length(local.gpu_availability_zones) > 0 ? local.gpu_availability_zones[
+    local.availability_zone_seed % length(local.gpu_availability_zones)
+  ] : null
+  selected_availability_zone = (
+    var.availability_zone != null
+    ? var.availability_zone
+    : local.automatic_availability_zone
+  )
 }
 
 resource "aws_subnet" "lab" {
   vpc_id                  = aws_vpc.main.id
   cidr_block              = "10.42.10.0/24"
-  availability_zone       = data.aws_availability_zones.available.names[0]
+  availability_zone       = local.selected_availability_zone
   map_public_ip_on_launch = true # 검증 단계 — 인스턴스가 직접 인터넷 접근
 
   tags = {
     Name = "${local.name_prefix}-subnet"
+  }
+
+  lifecycle {
+    precondition {
+      condition     = length(local.gpu_availability_zones) > 0
+      error_message = "${var.region}에서 ${var.instance_type}을 제공하는 표준 AZ를 찾지 못했습니다."
+    }
+
+    precondition {
+      condition = (
+        var.availability_zone == null
+        ? true
+        : contains(local.gpu_availability_zones, var.availability_zone)
+      )
+      error_message = "고정 AZ ${coalesce(var.availability_zone, "<자동>")}에서는 ${var.instance_type}을 제공하지 않습니다. 후보: ${join(", ", local.gpu_availability_zones)}"
+    }
   }
 }
 

@@ -86,6 +86,10 @@ alert_email       = "student@example.com"
 
 # 기본 인스턴스 타입은 g6.xlarge입니다.
 # instance_type = "g6.xlarge"
+
+# 기본값은 계정 ID에 따라 g6.xlarge 제공 AZ 중 하나를 자동 선택합니다.
+# 특정 AZ로 고정해야 할 때만 지정합니다.
+# availability_zone = "us-east-1b"
 ```
 
 ## 5. VM 생성
@@ -96,7 +100,7 @@ terraform plan
 terraform apply -auto-approve
 ```
 
-성공하면 `ami_id`, `ami_name`, `instance_ids`, `public_ips`, `manual_install_commands`, `start_commands`, `stop_commands`, `ssm_session_commands`가 출력됩니다.
+성공하면 `ami_id`, `ami_name`, `availability_zone`, `instance_ids`, `public_ips`, `manual_install_commands`, `start_commands`, `stop_commands`, `ssm_session_commands`가 출력됩니다.
 
 ## 6. SSM 접속
 

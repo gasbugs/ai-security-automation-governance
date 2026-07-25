@@ -9,6 +9,21 @@ variable "region" {
   }
 }
 
+variable "availability_zone" {
+  description = "GPU 인스턴스를 고정 배포할 AZ. null이면 계정 ID를 기준으로 g6.xlarge 제공 AZ에 결정적으로 분산한다."
+  type        = string
+  default     = null
+
+  validation {
+    condition = (
+      var.availability_zone == null
+      ? true
+      : can(regex("^${var.region}[a-z]$", var.availability_zone))
+    )
+    error_message = "availability_zone은 선택한 region의 표준 AZ여야 합니다. 예: us-east-1b"
+  }
+}
+
 variable "aws_profile" {
   description = "로컬 AWS CLI profile 이름"
   type        = string
