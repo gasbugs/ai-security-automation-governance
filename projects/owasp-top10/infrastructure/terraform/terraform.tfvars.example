@@ -5,7 +5,7 @@
 
 # AWS profile (aws configure --profile owasp-llm 또는 강사 안내 방식)
 aws_profile = "owasp-llm"
-region      = "us-east-1" # 강사가 공지한 리전으로 변경
+region      = "us-east-1" # 기본 us-east-1, GPU 수용량 부족 시 us-west-2
 
 # 강의 식별자 — 리소스 이름·태그·비용 알람에 사용
 course_id = "owasp-llm-2026"

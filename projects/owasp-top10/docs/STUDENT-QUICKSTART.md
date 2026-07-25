@@ -24,6 +24,9 @@ aws sts get-caller-identity --profile owasp-llm
 ## 2. GPU quota 확인
 
 기본값 `g6.xlarge`는 4 vCPU를 사용합니다. 아래 quota가 4 이상이어야 합니다.
+강사가 기본 `us-east-1` 대신 보조 `us-west-2`를 공지한 경우 모든 명령의
+`--region`과 Terraform `region` 값을 함께 변경합니다. GPU quota는 리전별이므로
+실제 배포 리전에서 별도로 승인되어 있어야 합니다.
 
 ```bash
 aws service-quotas get-service-quota \

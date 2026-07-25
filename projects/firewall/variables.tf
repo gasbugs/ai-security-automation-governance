@@ -11,9 +11,14 @@ variable "aws_profile" {
 }
 
 variable "aws_region" {
-  description = "AWS region in which to create the centralized inspection lab"
+  description = "AWS region for the lab: us-east-1 primary or us-west-2 fallback"
   type        = string
-  default     = "ap-northeast-2"
+  default     = "us-east-1"
+
+  validation {
+    condition     = contains(["us-east-1", "us-west-2"], var.aws_region)
+    error_message = "aws_region must be us-east-1 or us-west-2."
+  }
 }
 
 variable "blocked_domains" {

@@ -1,13 +1,28 @@
-# AWS 보안 Terraform 실습
+# AI 기반 보안 업무 자동화와 거버넌스
 
-한 저장소 안에 두 개의 독립 프로젝트를 둔 강의용 workspace입니다. 두 프로젝트는
-Terraform root, 변수, 상태, setup/destroy 진입점이 완전히 분리되어 있습니다.
+> **과정명:** AI 기반 보안 업무 자동화와 거버넌스
+>
+> **과정 주제:** 기술 및 생산성 · 거버넌스 및 통제
+
+이 저장소는 생성형 AI와 LLM을 활용해 보안 업무를 자동화하고, 안전하게 통제하는
+방법을 다루는 강의용 실습 프로젝트입니다. 특정 회사명이나 조직 내부 정보는
+과정명과 공개 문서에 사용하지 않습니다.
+
+## 커리큘럼 방향
+
+1. **기술 및 생산성:** AI를 활용해 보안 업무를 자동화하고 효율화하는 방법
+2. **거버넌스 및 통제:** AI 사용 과정의 데이터 유출 방지와 보안 가이드 및
+   법적 규제 대응 체계 수립
+
+현재 저장소에는 위 주제를 실습하기 위한 두 개의 독립 프로젝트가 있습니다.
+각 프로젝트의 Terraform root, 변수, 상태, setup/destroy 진입점은 완전히
+분리되어 있습니다.
 
 AWS 계정 권한, 인스턴스 사양, GPU Quota와 강의 전 점검 사항은
 [사전 준비 가이드](PREREQUISITES.md)를 먼저 확인하세요.
 
 ```text
-aws-security-terraform-practice/
+ai-security-automation-governance/
 ├── projects/
 │   ├── firewall/       # AWS Network Firewall + Transit Gateway
 │   └── owasp-top10/    # OWASP Top 10 for LLM AWS GPU lab
@@ -18,6 +33,8 @@ aws-security-terraform-practice/
 ## 중요한 실행 원칙
 
 - 두 환경을 한 번에 생성하는 명령은 없습니다.
+- 두 프로젝트의 지역 서비스는 기본 `us-east-1`, GPU 수용량 부족 시
+  보조 `us-west-2`에서만 실행합니다.
 - `PROJECT=firewall` 또는 `PROJECT=owasp-top10` 중 하나를 반드시 지정합니다.
 - 한 프로젝트가 활성화된 동안 다른 프로젝트의 `setup`은 거부됩니다.
 - 각 프로젝트는 별도의 `terraform.tfstate`를 사용합니다.

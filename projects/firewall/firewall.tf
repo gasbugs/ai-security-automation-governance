@@ -14,6 +14,19 @@ resource "aws_networkfirewall_rule_group" "blocked_domains" {
   type     = "STATEFUL"
 
   rule_group {
+    rule_variables {
+      ip_sets {
+        key = "HOME_NET"
+
+        ip_set {
+          definition = toset(concat(
+            [var.inspection_vpc_cidr],
+            values(var.spoke_vpc_cidrs),
+          ))
+        }
+      }
+    }
+
     rules_source {
       rules_source_list {
         generated_rules_type = "DENYLIST"

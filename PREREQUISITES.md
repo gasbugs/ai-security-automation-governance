@@ -61,10 +61,11 @@ AWS CLI를 직접 사용하는 경우에도 본인 인스턴스에 대한 SSM �
 정책으로 생성합니다. 이 정책은 실습 전용 계정 또는 실습 전용 배포 역할에만
 연결하는 것을 전제로 합니다.
 
-지역 서비스는 명시적 Deny를 사용해 버지니아 북부 `us-east-1`에서만
-허용합니다. IAM, STS, AWS Budgets는 글로벌 서비스이므로 이 리전 차단에서
-제외합니다. 이 Deny는 같은 역할에 연결된 다른 정책보다 우선하므로 다른 정책으로
-타 리전 권한을 우회할 수 없습니다.
+지역 서비스는 명시적 Deny를 사용해 기본 리전인 버지니아 북부 `us-east-1`과
+GPU 수용량 부족 시 사용하는 보조 리전 오리건 `us-west-2`에서만 허용합니다.
+IAM, STS, AWS Budgets는 글로벌 서비스이므로 이 리전 차단에서 제외합니다.
+이 Deny는 같은 역할에 연결된 다른 정책보다 우선하므로 다른 정책으로 승인되지
+않은 리전의 권한을 우회할 수 없습니다.
 
 복사해서 사용할 JSON 원본은
 [`policies/lab-deployer-policy.json`](policies/lab-deployer-policy.json)에
@@ -76,7 +77,7 @@ AWS CLI를 직접 사용하는 경우에도 본인 인스턴스에 대한 SSM �
   "Version": "2012-10-17",
   "Statement": [
     {
-      "Sid": "DenyRegionalActionsOutsideUsEast1",
+      "Sid": "DenyOutsideLabRegions",
       "Effect": "Deny",
       "NotAction": [
         "iam:*",
@@ -86,7 +87,10 @@ AWS CLI를 직접 사용하는 경우에도 본인 인스턴스에 대한 SSM �
       "Resource": "*",
       "Condition": {
         "StringNotEquals": {
-          "aws:RequestedRegion": "us-east-1"
+          "aws:RequestedRegion": [
+            "us-east-1",
+            "us-west-2"
+          ]
         }
       }
     },
@@ -385,8 +389,9 @@ Firewall 환경은 수강생별 환경이 아니라 강의 전체에서 공유�
 | Stateful Rule Group | 1개, capacity 100 |
 | CloudWatch Log Group | Flow/Alert 로그용 2개 |
 
-기본 리전은 버지니아 북부 `us-east-1`입니다. EC2에는 공인 IP를 할당하지 않으며,
-아웃바운드 인터넷 트래픽은 NAT Gateway와 Network Firewall을 통과합니다.
+기본 리전은 버지니아 북부 `us-east-1`이며, 보조 리전은 오리건
+`us-west-2`입니다. EC2에는 공인 IP를 할당하지 않으며, 아웃바운드 인터넷
+트래픽은 NAT Gateway와 Network Firewall을 통과합니다.
 
 ### OWASP Top 10 실습
 
@@ -415,8 +420,9 @@ OWASP 환경은 수강생마다 독립적인 GPU 인스턴스를 한 대씩 제�
 - 자동 종료용 Lambda 1개
 - EventBridge 스케줄 1~2개
 
-기본 리전은 버지니아 북부 `us-east-1`입니다. 인스턴스는 패키지, 컨테이너
-이미지와 AI 모델을 내려받기 위해 공인 IPv4를 사용합니다.
+기본 리전은 버지니아 북부 `us-east-1`이며, G6 수용량 부족 시 오리건
+`us-west-2`로 전환합니다. 인스턴스는 패키지, 컨테이너 이미지와 AI 모델을
+내려받기 위해 공인 IPv4를 사용합니다.
 
 실습 애플리케이션은 기본적으로 인터넷 전체에 공개하지 않습니다.
 `allowed_ingress_cidr`의 기본값은 `127.0.0.1/32`이며 SSM 포트 포워딩을
@@ -434,6 +440,13 @@ AWS의 공식 `g6.xlarge` 사양은 다음 문서에서 확인할 수 있습니�
 `g6.xlarge`는 EC2의 `Running On-Demand G and VT instances` Quota를
 사용합니다. 신규 계정에서는 기본값이 0 vCPU일 수 있으므로 반드시 실습 대상
 리전의 현재 적용 값을 확인해야 합니다.
+
+서울 `ap-northeast-2`는 교육 인원 전체에 필요한 GPU Quota 승인과 동시
+`g6.xlarge` 수용량 확보가 어려울 수 있어 기본 배포 리전에서 제외합니다.
+기본 리전인 `us-east-1`도 G6 수요가 많을 때는 Quota가 충분해도 인스턴스 시작이
+`InsufficientInstanceCapacity`로 실패할 수 있습니다. 이에 따라
+`us-west-2`를 보조 리전으로 준비하고, **두 리전 각각에 동일한 G/VT vCPU
+Quota를 미리 신청**합니다. Quota는 리전 간 공유되지 않습니다.
 
 ```text
 필요 G/VT vCPU = 기존 G/VT 사용량 + (동시 실행 수강생 수 × 4)
@@ -453,23 +466,27 @@ AWS의 공식 `g6.xlarge` 사양은 다음 문서에서 확인할 수 있습니�
 - 적용 범위: AWS 계정 및 리전별
 - 권장 신청 시점: 강의 최소 1주 전
 
-현재 적용 값을 확인합니다.
+두 리전의 현재 적용 값을 각각 확인합니다.
 
 ```bash
-aws service-quotas get-service-quota \
-  --service-code ec2 \
-  --quota-code L-DB2E81BA \
-  --region us-east-1
+for region in us-east-1 us-west-2; do
+  aws service-quotas get-service-quota \
+    --service-code ec2 \
+    --quota-code L-DB2E81BA \
+    --region "$region"
+done
 ```
 
-예를 들어 10명이 동시에 실습할 경우 48 vCPU를 요청합니다.
+예를 들어 10명이 동시에 실습할 경우 두 리전에 각각 48 vCPU를 요청합니다.
 
 ```bash
-aws service-quotas request-service-quota-increase \
-  --service-code ec2 \
-  --quota-code L-DB2E81BA \
-  --desired-value 48 \
-  --region us-east-1
+for region in us-east-1 us-west-2; do
+  aws service-quotas request-service-quota-increase \
+    --service-code ec2 \
+    --quota-code L-DB2E81BA \
+    --desired-value 48 \
+    --region "$region"
+done
 ```
 
 큰 Quota 증설 요청은 AWS Support 검토가 필요할 수 있고 승인 및 반영에 며칠
@@ -534,15 +551,18 @@ OWASP 환경은 수강생당 100GB의 gp3 EBS를 사용합니다.
 Quota 승인은 특정 AZ의 `g6.xlarge` 수용량을 보장하지 않습니다. 강의 전에
 다음을 실제로 검증합니다.
 
-1. 대상 리전에서 `g6.xlarge` 테스트 인스턴스 1대를 생성합니다.
+1. `us-east-1`과 `us-west-2`에서 `g6.xlarge` 테스트 인스턴스를 각각 1대
+   생성합니다.
 2. Terraform이 AWS Deep Learning AMI를 정상적으로 조회하는지 확인합니다.
 3. `nvidia-smi`로 NVIDIA L4 GPU와 드라이버를 확인합니다.
 4. 컨테이너 이미지와 Ollama 모델 다운로드를 확인합니다.
 5. SSM 접속과 포트 포워딩을 확인합니다.
 6. 검증 후 테스트 인스턴스를 종료하거나 삭제합니다.
 
-용량 부족 오류가 발생하면 다른 AZ 또는 G6를 제공하는 다른 리전을 검토합니다.
-Quota를 다른 리전에서 승인받았다면 원래 리전에는 적용되지 않으므로 주의합니다.
+`us-east-1`에서 용량 부족 오류가 발생하면 먼저 다른 AZ를 시도하고, 계속
+실패하면 `terraform.tfvars`의 리전을 `us-west-2`로 변경해 새 환경을
+배포합니다. 두 리전의 Terraform state를 혼용하지 않으며, 전환 전에 기존
+리전의 부분 생성 리소스를 정리합니다.
 
 ### 3.6 운영 및 보안 준비
 
@@ -579,7 +599,7 @@ SNS 구독 확인 이메일은 자동 승인되지 않습니다. 배포 후 수�
 
 | 시점 | 준비 항목 |
 |---|---|
-| D-14~D-7 | GPU G/VT vCPU Quota 신청 |
+| D-14~D-7 | `us-east-1`, `us-west-2` GPU G/VT vCPU Quota 각각 신청 |
 | D-7 | IAM 배포 역할, SCP 및 Permissions Boundary 확인 |
 | D-5 | `g6.xlarge`와 Deep Learning AMI 실제 생성 테스트 |
 | D-3 | Firewall 환경 전체 `plan` 및 테스트 배포 |
@@ -598,11 +618,11 @@ SNS 구독 확인 이메일은 자동 승인되지 않습니다. 배포 후 수�
 
 ### Quota 및 용량
 
-- [ ] G/VT On-Demand vCPU Quota가 `수강생 수 × 4` 이상이다.
+- [ ] `us-east-1`, `us-west-2` 각각의 G/VT On-Demand vCPU Quota가 `수강생 수 × 4` 이상이다.
 - [ ] Standard On-Demand vCPU에 최소 4 vCPU 여유가 있다.
 - [ ] VPC 3개와 EIP 2개의 잔여 Quota가 있다.
 - [ ] `수강생 수 × 100GB`의 gp3 EBS 여유가 있다.
-- [ ] 대상 리전/AZ에서 `g6.xlarge` 테스트 생성에 성공했다.
+- [ ] 두 리전의 최소 1개 AZ에서 `g6.xlarge` 테스트 생성에 성공했다.
 
 ### 접속 및 운영
 

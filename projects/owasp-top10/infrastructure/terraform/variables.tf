@@ -1,10 +1,11 @@
 variable "region" {
-  description = "AWS 리전. G 계열 GPU 인스턴스 가용성 확인 후 선택."
+  description = "AWS 리전. 기본 us-east-1, GPU 수용량 부족 시 보조 us-west-2."
   type        = string
   default     = "us-east-1"
+
   validation {
-    condition     = can(regex("^[a-z]{2}-[a-z]+-[0-9]+$", var.region))
-    error_message = "region은 us-east-1 같은 AWS 리전 형식이어야 합니다."
+    condition     = contains(["us-east-1", "us-west-2"], var.region)
+    error_message = "region은 us-east-1 또는 us-west-2여야 합니다."
   }
 }
 
