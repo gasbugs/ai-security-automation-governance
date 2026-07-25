@@ -1,10 +1,11 @@
 variable "region" {
-  description = "AWS 리전. G 계열 GPU 인스턴스 가용성 확인 후 선택."
+  description = "AWS 리전. 기본 us-east-1, GPU 수용량 부족 시 보조 us-west-2."
   type        = string
   default     = "us-east-1"
+
   validation {
-    condition     = can(regex("^[a-z]{2}-[a-z]+-[0-9]+$", var.region))
-    error_message = "region은 us-east-1 같은 AWS 리전 형식이어야 합니다."
+    condition     = contains(["us-east-1", "us-west-2"], var.region)
+    error_message = "region은 us-east-1 또는 us-west-2여야 합니다."
   }
 }
 
@@ -141,12 +142,13 @@ variable "enable_auto_stop" {
 }
 
 variable "auto_stop_schedule_mode" {
-  description = "자동 중지 스케줄 모드. daily_1730은 매일 17:30 KST 1회, night_1730_0830은 17:30 KST부터 다음날 08:30 KST까지 30분마다 실행, custom은 auto_stop_custom_crons_utc를 사용한다."
+  description = "자동 중지 스케줄 모드. daily_1800은 매일 18:00 KST 1회, night_1800_0830은 18:00 KST부터 다음날 08:30 KST까지 30분마다 실행, custom은 auto_stop_custom_crons_utc를 사용한다."
   type        = string
-  default     = "daily_1730"
+  default     = "daily_1800"
+
   validation {
-    condition     = contains(["daily_1730", "night_1730_0830", "custom"], var.auto_stop_schedule_mode)
-    error_message = "auto_stop_schedule_mode는 daily_1730, night_1730_0830, custom 중 하나여야 합니다."
+    condition     = contains(["daily_1800", "night_1800_0830", "custom"], var.auto_stop_schedule_mode)
+    error_message = "auto_stop_schedule_mode는 daily_1800, night_1800_0830, custom 중 하나여야 합니다."
   }
 }
 

@@ -5,12 +5,12 @@
 locals {
   auto_stop_resource_prefix = substr("${local.name_prefix}-auto-stop", 0, 48)
   auto_stop_schedule_presets = {
-    daily_1730 = {
-      "daily-1730-kst" = "cron(30 8 * * ? *)"
+    daily_1800 = {
+      "daily-1800-kst" = "cron(0 9 * * ? *)"
     }
-    night_1730_0830 = {
-      "night-minute-30" = "cron(30 8-23 * * ? *)"
+    night_1800_0830 = {
       "night-minute-00" = "cron(0 9-23 * * ? *)"
+      "night-minute-30" = "cron(30 9-23 * * ? *)"
     }
   }
   auto_stop_schedules = var.auto_stop_schedule_mode == "custom" ? var.auto_stop_custom_crons_utc : local.auto_stop_schedule_presets[var.auto_stop_schedule_mode]

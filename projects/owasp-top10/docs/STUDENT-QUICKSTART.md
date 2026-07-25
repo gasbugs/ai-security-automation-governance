@@ -24,6 +24,9 @@ aws sts get-caller-identity --profile owasp-llm
 ## 2. GPU quota 확인
 
 기본값 `g6.xlarge`는 4 vCPU를 사용합니다. 아래 quota가 4 이상이어야 합니다.
+강사가 기본 `us-east-1` 대신 보조 `us-west-2`를 공지한 경우 모든 명령의
+`--region`과 Terraform `region` 값을 함께 변경합니다. GPU quota는 리전별이므로
+실제 배포 리전에서 별도로 승인되어 있어야 합니다.
 
 ```bash
 aws service-quotas get-service-quota \
@@ -132,7 +135,7 @@ curl -fsSL https://raw.githubusercontent.com/gasbugs/owasp-llm-lab-setup-guide/m
 - DVLA 실행: `lab-day3-dvla`, port `8501`
 - Day 4 LLM03 fake model registry 실행: `lab-day2-fake-registry`, port `8002` (unit 이름은 호환성을 위해 유지)
 - EC2 start 후 자동 재시작을 위한 Podman Quadlet systemd user unit 등록
-- Terraform 기본 설정으로 매일 17:30 KST Lambda 기반 EC2 자동 중지 등록. `auto_stop_schedule_mode`로 야간 반복 모드 또는 custom cron 선택 가능
+- Terraform 기본 설정으로 매일 18:00 KST Lambda 기반 EC2 자동 중지 등록. `auto_stop_schedule_mode`로 야간 반복 모드 또는 custom cron 선택 가능
 
 설치 로그는 EC2 안의 `/var/log/owasp-llm-lab-install.log`에서 확인할 수 있습니다.
 

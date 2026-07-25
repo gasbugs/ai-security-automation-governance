@@ -1,6 +1,6 @@
 allow_spoke_icmp   = true
 aws_profile        = "aws-security-lab"
-aws_region         = "ap-northeast-2"
+aws_region         = "us-east-1" # GPU capacity fallback: us-west-2
 blocked_domains    = [".example.com"]
 environment        = "lab"
 inspection_vpc_cidr = "10.255.0.0/16"
