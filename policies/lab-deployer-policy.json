@@ -207,7 +207,8 @@
         "StringEquals": {
           "iam:AWSServiceName": [
             "network-firewall.amazonaws.com",
-            "delivery.logs.amazonaws.com"
+            "delivery.logs.amazonaws.com",
+            "transitgateway.amazonaws.com"
           ]
         }
       }
