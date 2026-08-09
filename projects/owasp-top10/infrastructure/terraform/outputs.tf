@@ -57,21 +57,21 @@ output "manual_install_commands" {
 output "start_commands" {
   description = "수강생이 본인 인스턴스 시작하는 명령"
   value = {
-    for id in var.student_ids : id => "aws ec2 start-instances --profile ${var.aws_profile} --region ${var.region} --instance-ids ${aws_instance.student[id].id}"
+    for id in var.student_ids : id => "aws ec2 start-instances${var.aws_profile != null ? " --profile ${var.aws_profile}" : ""} --region ${var.region} --instance-ids ${aws_instance.student[id].id}"
   }
 }
 
 output "stop_commands" {
   description = "수강생이 본인 인스턴스 중지하는 명령 (강의 끝나면 매일)"
   value = {
-    for id in var.student_ids : id => "aws ec2 stop-instances --profile ${var.aws_profile} --region ${var.region} --instance-ids ${aws_instance.student[id].id}"
+    for id in var.student_ids : id => "aws ec2 stop-instances${var.aws_profile != null ? " --profile ${var.aws_profile}" : ""} --region ${var.region} --instance-ids ${aws_instance.student[id].id}"
   }
 }
 
 output "ssm_session_commands" {
   description = "수강생이 본인 인스턴스에 SSM 접속하기 위한 명령"
   value = {
-    for id in var.student_ids : id => "aws ssm start-session --profile ${var.aws_profile} --region ${var.region} --target ${aws_instance.student[id].id}"
+    for id in var.student_ids : id => "aws ssm start-session${var.aws_profile != null ? " --profile ${var.aws_profile}" : ""} --region ${var.region} --target ${aws_instance.student[id].id}"
   }
 }
 

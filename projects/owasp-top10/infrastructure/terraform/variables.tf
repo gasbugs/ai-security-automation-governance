@@ -25,11 +25,11 @@ variable "availability_zone" {
 }
 
 variable "aws_profile" {
-  description = "로컬 AWS CLI profile 이름"
+  description = "로컬 AWS CLI profile 이름 (null이면 AWS 표준 자격 증명 탐색 순서 사용)"
   type        = string
-  default     = "owasp-llm"
+  default     = null
   validation {
-    condition     = can(regex("^[A-Za-z0-9_.@-]+$", var.aws_profile))
+    condition     = var.aws_profile == null ? true : can(regex("^[A-Za-z0-9_.@-]+$", var.aws_profile))
     error_message = "aws_profile은 AWS CLI profile 이름으로 사용할 수 있는 문자만 포함해야 합니다."
   }
 }
