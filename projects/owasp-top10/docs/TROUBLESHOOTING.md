@@ -23,6 +23,33 @@ aws service-quotas get-service-quota \
 - AWS Console -> Service Quotas -> EC2
 - `Running On-Demand G and VT instances`를 4 vCPU 이상으로 증설 신청
 
+## Terraform apply에서 g6 가용 영역 용량 부족
+
+증상:
+
+```text
+InsufficientInstanceCapacity
+We currently do not have sufficient g6.xlarge capacity in the Availability Zone you requested
+```
+
+먼저 현재 리전에서 `g6.xlarge` offering이 있는 영역을 확인합니다. 이 결과는 상품 지원 여부이며 실시간 재고 보장은 아닙니다.
+
+```bash
+aws ec2 describe-instance-type-offerings \
+  --profile owasp-llm --region us-east-1 \
+  --location-type availability-zone \
+  --filters Name=instance-type,Values=g6.xlarge \
+  --query 'InstanceTypeOfferings[].Location' --output text
+```
+
+인스턴스 생성이 실패한 Terraform state에서 `terraform.tfvars`의 영역을 다른 offering으로 바꾸고 plan부터 다시 실행합니다.
+
+```hcl
+availability_zone = "us-east-1c"
+```
+
+이미 생성에 성공한 state에서 이 값을 바꾸면 subnet과 EC2 교체가 계획될 수 있습니다. `VcpuLimitExceeded`는 재고가 아니라 계정 quota 문제이므로 이 방법 대신 앞 절의 quota 증액을 사용합니다.
+
 ## SSM 접속 실패
 
 확인:
@@ -48,8 +75,8 @@ SSM 접속 후:
 sudo tail -n 200 /var/log/owasp-llm-lab-install.log
 sudo -u ubuntu podman ps -a
 sudo -u ubuntu podman logs lab-ollama --tail 100
-sudo -u ubuntu podman logs lab-day1-vuln-rag --tail 100
-sudo -u ubuntu podman logs lab-day2-vuln-rag --tail 100
+sudo -u ubuntu podman logs lab-prompt-rag --tail 100
+sudo -u ubuntu podman logs lab-data-rag --tail 100
 ```
 
 흔한 원인:
@@ -71,7 +98,7 @@ sudo -u ubuntu \
 sudo -u ubuntu \
   XDG_RUNTIME_DIR=/run/user/$UBUNTU_UID \
   DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$UBUNTU_UID/bus \
-  systemctl --user status lab-day1-vuln-rag.service
+  systemctl --user status lab-prompt-rag.service
 ```
 
 `Failed to enable unit: ... is transient or generated`가 보이면 오래된 설치 스크립트가 Quadlet generated unit에 `enable`을 시도한 것입니다. 최신 `install-lab.sh`를 다시 실행하세요. Quadlet은 `.container` 파일의 `[Install]` 설정을 generator가 처리하므로, generated `.service`에 직접 `enable`을 실행하지 않습니다.
@@ -107,7 +134,7 @@ sudo -u ubuntu podman restart lab-ollama
 
 ## LLM08 embedding/API/미니 앱 문제
 
-정상 설치와 재설치 순서는 [LLM08 embedding lab setup](LLM08-SETUP.md)이 정본입니다. 먼저 **강사·콘텐츠 배포자가 공개 main source와 같은 commit의 GHCR 이미지가 모두 있는지** 확인합니다. 아래 publish gate는 강사용이며, 수강생은 공지된 40자리 setup commit을 사용하고 로컬 PC에 Podman을 추가 설치하지 않습니다. 로컬 워킹트리에만 있는 파일은 EC2 installer나 image에 자동 반영되지 않습니다.
+정상 설치와 재설치 순서는 [정본 저장소의 LLM08 embedding lab setup](https://github.com/gasbugs/owasp-llm-lab-setup-guide/blob/main/docs/LLM08-SETUP.md)입니다. 먼저 **강사·콘텐츠 배포자가 공개 main source와 같은 commit의 GHCR 이미지가 모두 있는지** 확인합니다. 아래 publish gate는 강사용이며, 수강생은 공지된 40자리 setup commit을 사용하고 로컬 PC에 Podman을 추가 설치하지 않습니다. 로컬 워킹트리에만 있는 파일은 EC2 installer나 image에 자동 반영되지 않습니다.
 
 ```bash
 # [로컬 노트북] setup repo 루트
@@ -150,7 +177,7 @@ test -x "$HOME/work/llm08-analysis-venv/bin/python"
 # [EC2 / SSM 세션, ubuntu 사용자]
 set -euo pipefail
 tail -n 200 /var/log/owasp-llm-lab-install.log
-podman logs --tail 200 lab-day4-vuln-rag
+podman logs --tail 200 lab-knowledge-rag
 podman logs --tail 200 lab-ollama
 
 curl -fsS --retry 2 --retry-all-errors --max-time 180 \

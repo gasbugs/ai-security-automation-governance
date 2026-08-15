@@ -133,19 +133,33 @@ curl -fsSL https://raw.githubusercontent.com/gasbugs/owasp-llm-lab-setup-guide/m
 - `llama3.1:8b-instruct-q4_K_M` 생성 모델과 `bge-m3:latest` embedding 모델 pull 및 warm-up
 - LLM08 서버 vector 분석용 `~/work/llm08-analysis-venv` 준비(NumPy만 설치)
 - 실습 포털 실행: `lab-portal`, port `8080`
-- Day별 취약 RAG 앱 실행: `lab-day1-vuln-rag`~`lab-day5-vuln-rag`, ports `8000`, `8010`, `8011`, `8012`, `8013`
-- 취약 Agent 앱 실행: `lab-day3-vuln-agent`, port `8001`
+- 역할별 취약 RAG 앱 실행: `lab-prompt-rag`, `lab-data-rag`, `lab-output-rag`, `lab-knowledge-rag`, `lab-resource-rag`, ports `8000`, `8010`, `8011`, `8012`, `8013`
+- 취약 Agent 앱 실행: `lab-vuln-agent`, port `8001`
 - LLMGoat 실행: `lab-llmgoat`, port `5000`
-- DVLA 실행: `lab-day3-dvla`, port `8501`
-- Day 4 LLM03 fake model registry 실행: `lab-day2-fake-registry`, port `8002` (unit 이름은 호환성을 위해 유지)
+- DVLA 실행: `lab-dvla`, port `8501`
+- Day 4 LLM03 fake model registry 실행: `lab-fake-registry`, port `8002`
 - EC2 start 후 자동 재시작을 위한 Podman Quadlet systemd user unit 등록
 - Terraform 기본 설정으로 매일 18:00 KST Lambda 기반 EC2 자동 중지 등록. `auto_stop_schedule_mode`로 야간 반복 모드 또는 custom cron 선택 가능
 
 설치 로그는 EC2 안의 `/var/log/owasp-llm-lab-install.log`에서 확인할 수 있습니다.
 
+### 주요 실습 포트를 SSM으로 localhost에 연결
+
+보안 그룹에서 실습 포트를 외부에 공개하지 않아도 SSM 포트포워딩으로 로컬 브라우저와 `curl`을 연결할 수 있습니다. 다음 명령은 수강생 노트북에서 실행하며, 기본 LLM 서비스뿐 아니라 Module 08의 Grafana(3001), Loki(3100), Tempo(3200), OTLP(4318), 보안 Gateway(8014), Retrieval(8015), Alert webhook(8099), Mimir(9009), Prometheus(9090), Alertmanager(9093), GPU Exporter(9400), Alloy UI(12345)를 같은 localhost 포트로 전달합니다. 사용하지 않는 포트에는 listener가 없으므로 해당 SSM 세션만 연결되지 않고 나머지 전달은 계속 동작합니다.
+
+```bash
+AWS_PROFILE=owasp-llm AWS_REGION=us-east-1 \
+  bash ~/owasp-llm-lab-setup-guide/infrastructure/scripts/student/forward-lab-ports.sh \
+  i-0123456789abcdef0
+```
+
+이 터미널을 열어 둔 동안 `http://localhost:8080`처럼 접속할 수 있습니다. `Ctrl+C`를 한 번 누르면 스크립트가 생성한 모든 SSM 세션이 종료됩니다. 일부 포트만 필요하면 `LAB_PORTS="8080 8012"`를 명령 앞에 추가합니다.
+
+이 방식은 인바운드 실습 포트를 열지 않아도 되지만, EC2의 SSM Agent가 AWS Systems Manager에 연결할 아웃바운드 HTTPS 443은 허용되어 있어야 합니다. 443까지 차단된 네트워크에서는 SSM 셸과 포트포워딩 모두 동작하지 않습니다.
+
 ### LLM08 추가 셋업
 
-LLM08은 일반 컨테이너 설치 외에 embedding 모델/API, NumPy 분석 venv, 학습자 미니 앱 scaffold와 loopback port forwarding을 함께 확인해야 합니다. 강사·콘텐츠 배포자가 [LLM08 embedding lab setup](LLM08-SETUP.md)의 **publish gate를 먼저 통과해 공지한 40자리 setup commit**을 받은 뒤, 새 EC2 또는 기존 EC2 경로를 선택해 진행하세요. 수강생은 publish gate 때문에 로컬 PC에 Podman을 추가 설치하지 않습니다.
+LLM08은 일반 컨테이너 설치 외에 embedding 모델/API, NumPy 분석 venv, 학습자 미니 앱 scaffold와 loopback port forwarding을 함께 확인해야 합니다. 강사·콘텐츠 배포자가 [정본 저장소의 LLM08 embedding lab setup](https://github.com/gasbugs/owasp-llm-lab-setup-guide/blob/main/docs/LLM08-SETUP.md)의 **publish gate를 먼저 통과해 공지한 40자리 setup commit**을 받은 뒤, 새 EC2 또는 기존 EC2 경로를 선택해 진행하세요. 수강생은 publish gate 때문에 로컬 PC에 Podman을 추가 설치하지 않습니다.
 
 이 문서나 코드가 아직 로컬 워킹트리에만 있고 공개 `origin/main` commit 또는 그 commit의 GHCR 이미지가 없다면 수강생 환경은 준비된 것이 아닙니다. `main`/`latest`를 무조건 재실행하지 말고, 강사가 공지한 40자리 setup commit과 `sha-<commit>` 이미지가 모두 공개된 뒤 설치합니다.
 
@@ -170,6 +184,8 @@ enable_user_data_bootstrap = true
 
 SSM 세션 안에서 실행합니다.
 
+`podman ps`의 `PORTS` 열은 `PublishPort`를 사용하는 Ollama와 LLMGoat에만 mapping을 표시합니다. RAG·Agent·DVLA·fake registry·Portal은 `Network=host`로 EC2의 고정 포트에서 직접 listen하므로 `PORTS` 열이 비어 있는 것이 정상입니다. 아래 localhost 요청이 성공하면 해당 host port는 실제로 열려 있습니다.
+
 ```bash
 sudo -u ubuntu podman ps --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
 curl -s http://localhost:8080/ | head
@@ -192,10 +208,10 @@ curl -s http://localhost:8002/api/v1/models | head
 
 | 실습 | 재시작 명령 | 원본 확인 명령 |
 |---|---|---|
-| LLM01-B | `systemctl --user restart lab-day1-vuln-rag.service` | `curl -sS http://localhost:8000/healthz` |
-| LLM04 | `systemctl --user restart lab-day2-vuln-rag.service` | `curl -sS http://localhost:8010/healthz` |
-| LLM05 | `systemctl --user restart lab-day3-vuln-rag.service` | `curl -sS http://localhost:8011/healthz` |
-| LLM06 삭제 실습 | `systemctl --user restart lab-day3-vuln-agent.service` | `curl -sS http://localhost:8001/healthz` |
+| LLM01-B | `systemctl --user restart lab-prompt-rag.service` | `curl -sS http://localhost:8000/healthz` |
+| LLM04 | `systemctl --user restart lab-data-rag.service` | `curl -sS http://localhost:8010/healthz` |
+| LLM05 | `systemctl --user restart lab-output-rag.service` | `curl -sS http://localhost:8011/healthz` |
+| LLM06 삭제 실습 | `systemctl --user restart lab-vuln-agent.service` | `curl -sS http://localhost:8001/healthz` |
 | LLMGoat 상태 변경 실습 | `systemctl --user restart lab-llmgoat.service` | `curl -sS http://localhost:5000/healthz` |
 
 LLM10은 timeout 뒤 Day 5 앱과 공유 Ollama queue를 정해진 순서로 복구해야

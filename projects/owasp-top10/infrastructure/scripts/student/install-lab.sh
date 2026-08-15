@@ -19,10 +19,11 @@ LOG_FILE="${LAB_INSTALL_LOG:-/var/log/owasp-llm-lab-install.log}"
 exec > >(tee -a "$LOG_FILE") 2>&1
 
 RAW_URL="${LAB_SETUP_REPO_RAW_URL:-https://raw.githubusercontent.com/gasbugs/owasp-llm-lab-setup-guide/main}"
-SCRIPT_VERSION="0.1.8"
+SCRIPT_VERSION="0.2.6"
 IMAGE_NAMESPACE="${IMAGE_NAMESPACE:-gasbugs}"
 IMAGE_TAG="${IMAGE_TAG:-latest}"
 REFRESH_IMAGES="${REFRESH_IMAGES:-true}"
+APT_LOCK_TIMEOUT_SECONDS="${APT_LOCK_TIMEOUT_SECONDS:-600}"
 OLLAMA_MODEL="${OLLAMA_MODEL:-llama3.1:8b-instruct-q4_K_M}"
 OLLAMA_EMBED_MODEL="${OLLAMA_EMBED_MODEL:-bge-m3:latest}"
 OLLAMA_COMPAT_MODEL="${OLLAMA_COMPAT_MODEL:-llama3}"
@@ -81,20 +82,31 @@ install -d -m 0755 -o ubuntu -g ubuntu /home/ubuntu/work
 # 4) Podman 설치
 step "4/10" "Podman rootless 실행에 필요한 패키지를 확인하고 부족하면 설치합니다"
 export DEBIAN_FRONTEND=noninteractive
+case "$APT_LOCK_TIMEOUT_SECONDS" in
+  ''|*[!0-9]*)
+    echo "ERROR: APT_LOCK_TIMEOUT_SECONDS must be a non-negative integer" >&2
+    exit 1
+    ;;
+esac
 if command -v podman >/dev/null 2>&1 && \
+  command -v podman-compose >/dev/null 2>&1 && \
   command -v crun >/dev/null 2>&1 && \
   command -v fuse-overlayfs >/dev/null 2>&1 && \
   command -v slirp4netns >/dev/null 2>&1 && \
   command -v newuidmap >/dev/null 2>&1 && \
   command -v jq >/dev/null 2>&1 && \
+  dpkg -s golang-github-containernetworking-plugin-dnsname >/dev/null 2>&1 && \
   dpkg -s python3-venv >/dev/null 2>&1; then
   echo "[install-lab] Podman/rootless prerequisites already installed"
 else
-  apt-get update -y
-  apt-get install -y --no-install-recommends \
+  echo "[install-lab] waiting up to ${APT_LOCK_TIMEOUT_SECONDS}s for the AMI apt/dpkg lock"
+  apt-get -o "DPkg::Lock::Timeout=$APT_LOCK_TIMEOUT_SECONDS" update -y
+  apt-get -o "DPkg::Lock::Timeout=$APT_LOCK_TIMEOUT_SECONDS" \
+    install -y --no-install-recommends \
     curl ca-certificates git jq \
     python3-venv \
-    podman crun fuse-overlayfs slirp4netns uidmap
+      podman podman-compose crun fuse-overlayfs slirp4netns uidmap \
+      golang-github-containernetworking-plugin-dnsname
 fi
 
 # rootless 설정
@@ -118,6 +130,7 @@ UBUNTU_USER_ENV=(
   DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$UBUNTU_UID/bus"
 )
 RUN_AS_UBUNTU=(runuser -u ubuntu -- env "${UBUNTU_USER_ENV[@]}")
+"${RUN_AS_UBUNTU[@]}" systemctl --user enable --now podman.socket
 
 # CDI 모드 nvidia
 step "6/10" "NVIDIA GPU를 Podman 컨테이너에서 사용할 CDI 설정을 확인합니다"
@@ -155,6 +168,45 @@ for img in owasp-llm-base-gpu owasp-llm-vuln-rag owasp-llm-vuln-agent owasp-llm-
   fi
 done
 PULLSH
+
+# Quadlet의 Restart=always는 컨테이너 종료를 감지하면 새 컨테이너를 만들 수 있다.
+# 수강생이 컨테이너 안에서 바꾼 secure-coding source가 그 과정에서 사라지지
+# 않도록 역할별 host source를 이미지에서 추출하고 동일 경로에 bind mount한다.
+echo "[install-lab] preparing restart-persistent learner-editable source"
+RUNTIME_SOURCE_ROOT=/home/ubuntu/work/runtime-src
+install -d -m 0755 -o ubuntu -g ubuntu "$RUNTIME_SOURCE_ROOT"
+
+seed_editable_tree() {
+  local unit="$1"
+  local image="$2"
+  local destination="$RUNTIME_SOURCE_ROOT/$unit/app"
+  local candidate="$RUNTIME_SOURCE_ROOT/.${unit}.next"
+
+  rm -rf "$candidate"
+  install -d -m 0755 -o ubuntu -g ubuntu "$candidate"
+  "${RUN_AS_UBUNTU[@]}" podman run --rm --entrypoint tar \
+    "$image" -C /app -cf - app | tar -C "$candidate" -xf -
+  rm -rf "$destination"
+  install -d -m 0755 -o ubuntu -g ubuntu "$(dirname "$destination")"
+  mv "$candidate/app" "$destination"
+  rmdir "$candidate"
+  chown -R ubuntu:ubuntu "$RUNTIME_SOURCE_ROOT/$unit"
+}
+
+for rag_unit in \
+  lab-prompt-rag \
+  lab-data-rag \
+  lab-output-rag \
+  lab-knowledge-rag \
+  lab-resource-rag; do
+  seed_editable_tree \
+    "$rag_unit" \
+    "ghcr.io/${IMAGE_NAMESPACE}/owasp-llm-vuln-rag:${IMAGE_TAG}"
+done
+
+seed_editable_tree \
+  lab-vuln-agent \
+  "ghcr.io/${IMAGE_NAMESPACE}/owasp-llm-vuln-agent:${IMAGE_TAG}"
 
 # 7) 시나리오 결정
 echo "[install-lab] enabled scenarios: day1 day2 day3 day4 day5"
@@ -225,15 +277,35 @@ QUADLET_FINGERPRINT_BEFORE=$(
 
 echo "[install-lab] writing Quadlet unit files under $QUADLET_DIR"
 
-echo "[install-lab] removing legacy single-day unit files and containers if they exist"
-rm -f "$QUADLET_DIR/lab-vuln-rag.container"
-rm -f "$QUADLET_DIR/lab-vuln-agent.container"
-rm -f "$QUADLET_DIR/lab-dvla.container"
-rm -f "$QUADLET_DIR/lab-fake-registry.container"
-rm -f "$QUADLET_DIR/lab-portal.container"
+echo "[install-lab] removing legacy date-based unit files and containers if they exist"
+legacy_units=(
+  lab-vuln-rag
+  lab-day1-vuln-rag
+  lab-day2-vuln-rag
+  lab-day3-vuln-rag
+  lab-day4-vuln-rag
+  lab-day5-vuln-rag
+  lab-day3-vuln-agent
+  lab-day3-dvla
+  lab-day2-fake-registry
+)
+for unit in "${legacy_units[@]}"; do
+  rm -f "$QUADLET_DIR/$unit.container"
+done
 "${RUN_AS_UBUNTU[@]}" bash <<'LEGACYSH'
 set -euo pipefail
-for unit in lab-vuln-rag lab-vuln-agent lab-dvla lab-fake-registry lab-portal; do
+legacy_units=(
+  lab-vuln-rag
+  lab-day1-vuln-rag
+  lab-day2-vuln-rag
+  lab-day3-vuln-rag
+  lab-day4-vuln-rag
+  lab-day5-vuln-rag
+  lab-day3-vuln-agent
+  lab-day3-dvla
+  lab-day2-fake-registry
+)
+for unit in "${legacy_units[@]}"; do
   systemctl --user stop "$unit.service" >/dev/null 2>&1 || true
   systemctl --user reset-failed "$unit.service" >/dev/null 2>&1 || true
   podman rm -f "$unit" >/dev/null 2>&1 || true
@@ -267,17 +339,25 @@ declare -A RAG_PORTS=(
   [day4]=8012
   [day5]=8013
 )
+declare -A RAG_UNITS=(
+  [day1]=lab-prompt-rag
+  [day2]=lab-data-rag
+  [day3]=lab-output-rag
+  [day4]=lab-knowledge-rag
+  [day5]=lab-resource-rag
+)
 
 for scenario in day1 day2 day3 day4 day5; do
   rag_port="${RAG_PORTS[$scenario]}"
-  cat > "$QUADLET_DIR/lab-${scenario}-vuln-rag.container" <<EOF
+  rag_unit="${RAG_UNITS[$scenario]}"
+  cat > "$QUADLET_DIR/${rag_unit}.container" <<EOF
 [Unit]
-Description=OWASP LLM Lab - ${scenario} Vulnerable RAG
+Description=OWASP LLM Lab - ${scenario} scenario RAG
 After=lab-ollama.container
 Requires=lab-ollama.container
 
 [Container]
-ContainerName=lab-${scenario}-vuln-rag
+ContainerName=${rag_unit}
 Image=ghcr.io/${IMAGE_NAMESPACE}/owasp-llm-vuln-rag:${IMAGE_TAG}
 Network=host
 Environment=DEFAULT_SCENARIO=${scenario}
@@ -286,6 +366,7 @@ Environment=PORT=${rag_port}
 Environment=OLLAMA_URL=http://localhost:11434
 Environment=OLLAMA_MODEL=$OLLAMA_MODEL
 Environment=OLLAMA_EMBED_MODEL=$OLLAMA_EMBED_MODEL
+Volume=/home/ubuntu/work/runtime-src/${rag_unit}/app:/app/app:Z
 Exec=uv run uvicorn app.main:app --host 0.0.0.0 --port ${rag_port}
 
 [Service]
@@ -296,18 +377,19 @@ WantedBy=default.target
 EOF
 done
 
-cat > "$QUADLET_DIR/lab-day3-vuln-agent.container" <<EOF
+cat > "$QUADLET_DIR/lab-vuln-agent.container" <<EOF
 [Unit]
-Description=OWASP LLM Lab - day3 Vulnerable Agent
+Description=OWASP LLM Lab - Vulnerable Agent
 After=lab-ollama.container
 Requires=lab-ollama.container
 
 [Container]
-ContainerName=lab-day3-vuln-agent
+ContainerName=lab-vuln-agent
 Image=ghcr.io/${IMAGE_NAMESPACE}/owasp-llm-vuln-agent:${IMAGE_TAG}
 Network=host
 Environment=OLLAMA_URL=http://localhost:11434
 Environment=OLLAMA_MODEL=$OLLAMA_MODEL
+Volume=/home/ubuntu/work/runtime-src/lab-vuln-agent/app:/app/app:Z
 
 [Service]
 Restart=always
@@ -341,14 +423,14 @@ Restart=always
 WantedBy=default.target
 EOF
 
-cat > "$QUADLET_DIR/lab-day3-dvla.container" <<EOF
+cat > "$QUADLET_DIR/lab-dvla.container" <<EOF
 [Unit]
-Description=OWASP LLM Lab - day3 Damn Vulnerable LLM Agent
+Description=OWASP LLM Lab - Damn Vulnerable LLM Agent
 After=lab-ollama.container
 Requires=lab-ollama.container
 
 [Container]
-ContainerName=lab-day3-dvla
+ContainerName=lab-dvla
 Image=ghcr.io/${IMAGE_NAMESPACE}/owasp-llm-dvla:${IMAGE_TAG}
 Network=host
 Environment=OLLAMA_HOST=http://localhost:11434
@@ -363,12 +445,12 @@ Restart=always
 WantedBy=default.target
 EOF
 
-cat > "$QUADLET_DIR/lab-day2-fake-registry.container" <<'EOF'
+cat > "$QUADLET_DIR/lab-fake-registry.container" <<'EOF'
 [Unit]
-Description=OWASP LLM Lab - day2 Fake Model Registry
+Description=OWASP LLM Lab - Fake Model Registry
 
 [Container]
-ContainerName=lab-day2-fake-registry
+ContainerName=lab-fake-registry
 Image=docker.io/library/python:3.12-slim
 Network=host
 Volume=/home/ubuntu/work/fake-registry:/app:Z
@@ -420,15 +502,15 @@ set -euo pipefail
 echo "[install-lab] reloading systemd user units and reconciling lab services"
 units=(
   lab-ollama
-  lab-day1-vuln-rag
-  lab-day2-vuln-rag
-  lab-day3-vuln-rag
-  lab-day4-vuln-rag
-  lab-day5-vuln-rag
-  lab-day3-vuln-agent
+  lab-prompt-rag
+  lab-data-rag
+  lab-output-rag
+  lab-knowledge-rag
+  lab-resource-rag
+  lab-vuln-agent
   lab-llmgoat
-  lab-day3-dvla
-  lab-day2-fake-registry
+  lab-dvla
+  lab-fake-registry
   lab-portal
 )
 systemctl --user daemon-reload
@@ -442,7 +524,7 @@ for unit in "${units[@]}"; do
 
   image_backed=false
   case "$unit" in
-    lab-day?-vuln-rag|lab-day3-vuln-agent|lab-llmgoat|lab-day3-dvla)
+    lab-prompt-rag|lab-data-rag|lab-output-rag|lab-knowledge-rag|lab-resource-rag|lab-vuln-agent|lab-llmgoat|lab-dvla)
       image_backed=true
       ;;
   esac
@@ -452,11 +534,22 @@ for unit in "${units[@]}"; do
     restart_reason="Quadlet configuration changed"
   elif [ "$REFRESH_IMAGES" = "true" ] && [ "$image_backed" = "true" ]; then
     restart_reason="requested image refresh"
-  elif [ "$unit" = "lab-day3-dvla" ]; then
+  elif [ "$unit" = "lab-dvla" ]; then
     restart_reason="DVLA model configuration refreshed"
-  elif [ "$unit" = "lab-day2-fake-registry" ] && \
+  elif [ "$unit" = "lab-fake-registry" ] && \
     [ "$FAKE_REGISTRY_CHANGED" = "true" ]; then
     restart_reason="fake-registry source refreshed"
+  fi
+
+  if [ -z "$restart_reason" ]; then
+    case "$unit" in
+      lab-prompt-rag|lab-data-rag|lab-output-rag|lab-knowledge-rag|lab-resource-rag|lab-vuln-agent)
+        if ! podman inspect --format '{{range .Mounts}}{{println .Destination}}{{end}}' "$unit" \
+          | grep -qx '/app/app'; then
+          restart_reason="learner-editable /app/app source mount missing"
+        fi
+        ;;
+    esac
   fi
 
   if [ -n "$restart_reason" ]; then
@@ -552,23 +645,59 @@ echo "[install-lab] verifying reconciled service health and requested image refe
 set -euo pipefail
 
 declare -A expected_images=(
-  [lab-day1-vuln-rag]="owasp-llm-vuln-rag"
-  [lab-day2-vuln-rag]="owasp-llm-vuln-rag"
-  [lab-day3-vuln-rag]="owasp-llm-vuln-rag"
-  [lab-day4-vuln-rag]="owasp-llm-vuln-rag"
-  [lab-day5-vuln-rag]="owasp-llm-vuln-rag"
-  [lab-day3-vuln-agent]="owasp-llm-vuln-agent"
+  [lab-prompt-rag]="owasp-llm-vuln-rag"
+  [lab-data-rag]="owasp-llm-vuln-rag"
+  [lab-output-rag]="owasp-llm-vuln-rag"
+  [lab-knowledge-rag]="owasp-llm-vuln-rag"
+  [lab-resource-rag]="owasp-llm-vuln-rag"
+  [lab-vuln-agent]="owasp-llm-vuln-agent"
   [lab-llmgoat]="owasp-llm-llmgoat"
-  [lab-day3-dvla]="owasp-llm-dvla"
+  [lab-dvla]="owasp-llm-dvla"
 )
 
 for container in "${!expected_images[@]}"; do
   expected="ghcr.io/${IMAGE_NAMESPACE}/${expected_images[$container]}:${IMAGE_TAG}"
-  actual_name=$(podman inspect --format '{{.ImageName}}' "$container")
-  actual_id=$(podman inspect --format '{{.Image}}' "$container")
   expected_id=$(podman image inspect --format '{{.Id}}' "$expected")
-  if [ "$actual_name" != "$expected" ] || [ "$actual_id" != "$expected_id" ]; then
+  image_ready=false
+  for attempt in $(seq 1 30); do
+    if actual_name=$(podman inspect --format '{{.ImageName}}' "$container" 2>/dev/null) &&
+      actual_id=$(podman inspect --format '{{.Image}}' "$container" 2>/dev/null) &&
+      [ "$actual_name" = "$expected" ] && [ "$actual_id" = "$expected_id" ]; then
+      image_ready=true
+      break
+    fi
+    sleep 2
+  done
+  if [ "$image_ready" != true ]; then
+    actual_name=$(podman inspect --format '{{.ImageName}}' "$container" 2>/dev/null || echo unavailable)
+    actual_id=$(podman inspect --format '{{.Image}}' "$container" 2>/dev/null || echo unavailable)
     echo "ERROR: $container runs $actual_name ($actual_id), expected $expected ($expected_id)" >&2
+    exit 1
+  fi
+done
+
+declare -A editable_source_files=(
+  [lab-prompt-rag]="/app/app/secure_coding.py"
+  [lab-data-rag]="/app/app/secure_coding.py"
+  [lab-output-rag]="/app/app/secure_coding.py"
+  [lab-knowledge-rag]="/app/app/secure_coding.py"
+  [lab-resource-rag]="/app/app/secure_coding.py"
+  [lab-vuln-agent]="/app/app/main.py"
+)
+for container in "${!editable_source_files[@]}"; do
+  source_file="${editable_source_files[$container]}"
+  source_ready=false
+  for attempt in $(seq 1 30); do
+    if podman inspect --format '{{range .Mounts}}{{println .Destination}}{{end}}' "$container" 2>/dev/null \
+      | grep -qx '/app/app' &&
+      podman exec "$container" test -f "$source_file" 2>/dev/null; then
+      source_ready=true
+      break
+    fi
+    sleep 2
+  done
+  if [ "$source_ready" != true ]; then
+    echo "ERROR: $container did not stabilize with /app/app and learner-editable source $source_file" >&2
     exit 1
   fi
 done
@@ -600,6 +729,44 @@ for url in "${health_urls[@]}"; do
     echo "ERROR: required lab endpoint did not become healthy: $url" >&2
     exit 1
   fi
+done
+
+# `podman ps`의 PORTS 열은 publish된 포트만 표시한다. Network=host인
+# 서비스는 열이 비어 있어도 EC2 host의 같은 포트에서 직접 listen한다.
+# 설치가 성공하기 전에 각 서비스가 의도한 두 노출 방식 중 하나를
+# 실제로 사용하는지 확인해, 빠진 PublishPort와 잘못된 network mode를 구분한다.
+declare -A host_network_ports=(
+  [lab-prompt-rag]=8000
+  [lab-data-rag]=8010
+  [lab-output-rag]=8011
+  [lab-knowledge-rag]=8012
+  [lab-resource-rag]=8013
+  [lab-vuln-agent]=8001
+  [lab-dvla]=8501
+  [lab-fake-registry]=8002
+  [lab-portal]=8080
+)
+for container in "${!host_network_ports[@]}"; do
+  network_mode=$(podman inspect --format '{{.HostConfig.NetworkMode}}' "$container")
+  if [ "$network_mode" != "host" ]; then
+    echo "ERROR: $container must expose ${host_network_ports[$container]} through Network=host, got $network_mode" >&2
+    exit 1
+  fi
+  echo "[install-lab] port exposure ready: $container network=host host_port=${host_network_ports[$container]}"
+done
+
+declare -A published_ports=(
+  [lab-ollama]=11434
+  [lab-llmgoat]=5000
+)
+for container in "${!published_ports[@]}"; do
+  container_port="${published_ports[$container]}/tcp"
+  published=$(podman port "$container" "$container_port")
+  if [ -z "$published" ]; then
+    echo "ERROR: $container has no published host port for $container_port" >&2
+    exit 1
+  fi
+  echo "[install-lab] port exposure ready: $container published=$published"
 done
 
 # Older vuln-rag images also expose /healthz. Exercise the authenticated LLM08
@@ -650,6 +817,13 @@ OWASP LLM Lab 설치가 완료되었습니다.
 
 다음 명령으로 실행 중인 실습 컨테이너를 확인하세요.
   sudo -u ubuntu podman ps
+
+포트 노출 방식:
+  - RAG, Agent, DVLA, fake registry, Portal은 Network=host를 사용하므로
+    podman ps의 PORTS 열이 비어 있어도 아래의 고정 host port에서 동작합니다.
+  - Ollama와 LLMGoat는 격리 network에서 PublishPort를 사용하므로 PORTS 열에
+    11434->11434, 5000->5000 mapping이 표시됩니다.
+  - 설치 과정은 두 방식과 각 localhost health endpoint를 모두 검증했습니다.
 
 주요 서비스:
   - Lab Portal            8080

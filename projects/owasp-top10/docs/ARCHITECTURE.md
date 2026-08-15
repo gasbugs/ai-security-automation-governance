@@ -12,15 +12,15 @@ flowchart TD
   D -. "optional user-data bootstrap" .-> E
   E --> F["lab-ollama :11434"]
   E --> P["lab-portal :8080"]
-  E --> G1["lab-day1-vuln-rag :8000"]
-  E --> G2["lab-day2-vuln-rag :8010"]
-  E --> G3["lab-day3-vuln-rag :8011"]
-  E --> G4["lab-day4-vuln-rag :8012"]
-  E --> G5["lab-day5-vuln-rag :8013"]
-  E --> H["lab-day3-vuln-agent :8001"]
+  E --> G1["lab-prompt-rag :8000"]
+  E --> G2["lab-data-rag :8010"]
+  E --> G3["lab-output-rag :8011"]
+  E --> G4["lab-knowledge-rag :8012"]
+  E --> G5["lab-resource-rag :8013"]
+  E --> H["lab-vuln-agent :8001"]
   E --> I["lab-llmgoat :5000"]
-  E --> J["lab-day3-dvla :8501"]
-  E --> K["lab-day2-fake-registry :8002"]
+  E --> J["lab-dvla :8501"]
+  E --> K["lab-fake-registry :8002"]
 ```
 
 ## Terraform
@@ -105,24 +105,40 @@ Terraform의 `lab_image_namespace`와 `lab_image_tag`도 user-data가 설치 스
 |---|---:|---|
 | `lab-ollama` | 11434 | 생성 모델과 LLM08 `bge-m3:latest` embedding을 함께 제공하는 로컬 Ollama API |
 | `lab-portal` | 8080 | 실습 앱 링크와 health check 진입점 |
-| `lab-day1-vuln-rag` | 8000 | Day 1 LLM01 프롬프트 인젝션 RAG 챗봇 |
-| `lab-day2-vuln-rag` | 8010 | Day 2 LLM02·LLM04 Bank/RAG 챗봇 |
-| `lab-day3-vuln-rag` | 8011 | Day 3 LLM05 output handling RAG 챗봇 |
-| `lab-day4-vuln-rag` | 8012 | Day 2 LLM08의 `/api/embed`·paired vector search/chat과 Day 4 LLM07·LLM09가 공유하는 PrivateGPT-Lite |
-| `lab-day5-vuln-rag` | 8013 | Day 5 LLM10 resource consumption RAG 챗봇 |
-| `lab-day3-vuln-agent` | 8001 | 의도적으로 취약한 tool-calling Agent |
+| `lab-prompt-rag` | 8000 | Day 1 LLM01 프롬프트 인젝션 RAG 챗봇 |
+| `lab-data-rag` | 8010 | Day 2 LLM02·LLM04 Bank/RAG 챗봇 |
+| `lab-output-rag` | 8011 | Day 3 LLM05 output handling RAG 챗봇 |
+| `lab-knowledge-rag` | 8012 | Day 2 LLM08의 `/api/embed`·paired vector search/chat과 Day 4 LLM07·LLM09가 공유하는 PrivateGPT-Lite |
+| `lab-resource-rag` | 8013 | Day 5 LLM10 resource consumption RAG 챗봇 |
+| `lab-vuln-agent` | 8001 | 의도적으로 취약한 tool-calling Agent |
 | `lab-llmgoat` | 5000 | LLMGoat cross-platform 실습 |
-| `lab-day3-dvla` | 8501 | Damn Vulnerable LLM Agent 실습 |
-| `lab-day2-fake-registry` | 8002 | Day 4 LLM03 공급망 실습용 fake registry. 브라우저/API 확인 경로는 `/api/v1/models` |
+| `lab-dvla` | 8501 | Damn Vulnerable LLM Agent 실습 |
+| `lab-fake-registry` | 8002 | Day 4 LLM03 공급망 실습용 fake registry. 브라우저/API 확인 경로는 `/api/v1/models` |
+
+## LLM02 고객 인증과 데이터 최소화 경계
+
+```mermaid
+flowchart LR
+  V["취약 endpoint"] -->|"body customer_id"| DB["합성 SQLite 고객 DB"]
+  DB -->|"SELECT *"| VM["전체 레코드를 모델 context로 전달"]
+  S["안전 endpoint"] --> A["Bearer token 검증"]
+  A -->|"server-side token map"| C["인증 고객 ID 결정"]
+  C --> DB
+  DB --> F["업무 필드 allowlist"]
+  F --> SM["최소 context를 모델에 전달"]
+  SM --> R["응답 marker redaction"]
+```
+
+안전 endpoint의 request schema에는 `customer_id` 필드가 없습니다. 인증과 고객 객체 인가는 `docker/vuln-rag/app/scenarios/day2.py`의 token map과 `docker/vuln-rag/app/main.py`의 route에서 서버가 결정하며, 모델은 사용자 신원이나 조회 대상을 선택하지 않습니다. 공개 GHCR의 동일 `vuln-rag` 이미지에 취약·안전 경로가 함께 있으므로 수강생은 별도 build 없이 source와 HTTP 결과만 비교합니다.
 
 ## LLM08 embedding dataflow와 경계
 
-LLM08 수강생 앱 scaffold는 `examples/llm08/mini_vector_search_app.py`에 있습니다. 설치·검증·종료 순서는 [LLM08 embedding lab setup](LLM08-SETUP.md)을 정본으로 사용합니다.
+LLM08 수강생 앱 scaffold는 정본 setup 저장소의 `examples/llm08/mini_vector_search_app.py`에 있습니다. 설치·검증·종료 순서는 [LLM08 embedding lab setup](https://github.com/gasbugs/owasp-llm-lab-setup-guide/blob/main/docs/LLM08-SETUP.md)을 정본으로 사용합니다.
 
 ```mermaid
 flowchart LR
   B["로컬 브라우저 :18080"] -->|"SSM → EC2 127.0.0.1:18080"| M["learner mini app bind 0.0.0.0:18080"]
-  M -->|"Bearer token + POST /api/embed"| D["lab-day4-vuln-rag 127.0.0.1:8012"]
+  M -->|"Bearer token + POST /api/embed"| D["lab-knowledge-rag 127.0.0.1:8012"]
   D -->|"POST /api/embed, bge-m3:latest"| O["lab-ollama 127.0.0.1:11434"]
   Q["query + 4 local documents"] --> V["vulnerable: all tenants are candidates"]
   Q --> S["safe: authenticated tenant filter first"]

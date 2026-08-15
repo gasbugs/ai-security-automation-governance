@@ -18,7 +18,7 @@ table과 테스트 인스턴스까지 Terraform으로 완성하도록 확장했�
 ## OWASP Top 10 프로젝트
 
 - setup 원본: <https://github.com/gasbugs/owasp-llm-lab-setup-guide>
-- 커밋: `021166afabcdfc1d2dcd74ad715f75980f1a31a9`
+- 동기화 기준 커밋: `a385186c498fe6318cbc53886d0718baabc87aad`
 - 원본 경로:
   - `infrastructure/terraform`
   - `infrastructure/scripts/student`
@@ -30,6 +30,11 @@ table과 테스트 인스턴스까지 Terraform으로 완성하도록 확장했�
 
 강의 콘텐츠 저장소 `gasbugs/owasp-top-10-for-llm`이 가리키는 실제 AWS GPU
 setup 원본을 사용했습니다.
+
+이번 동기화에는 bootstrap 설치기 `0.2.6`, 역할별 `/app/app` 편집 소스 bind
+mount, Quadlet 서비스 재시작 후 런타임 안정화 확인, 전체 SSM 포트 전달 helper가
+포함됩니다. 이 저장소가 별도로 제공하는 계정별 GPU AZ 분산, 최소 권한 IAM,
+18:00 KST 자동 중지 정책은 유지합니다.
 
 ## 라이선스
 
