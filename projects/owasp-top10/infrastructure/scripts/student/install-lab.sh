@@ -19,7 +19,7 @@ LOG_FILE="${LAB_INSTALL_LOG:-/var/log/owasp-llm-lab-install.log}"
 exec > >(tee -a "$LOG_FILE") 2>&1
 
 RAW_URL="${LAB_SETUP_REPO_RAW_URL:-https://raw.githubusercontent.com/gasbugs/owasp-llm-lab-setup-guide/main}"
-SCRIPT_VERSION="0.2.6"
+SCRIPT_VERSION="0.2.8"
 IMAGE_NAMESPACE="${IMAGE_NAMESPACE:-gasbugs}"
 IMAGE_TAG="${IMAGE_TAG:-latest}"
 REFRESH_IMAGES="${REFRESH_IMAGES:-true}"
@@ -131,6 +131,7 @@ UBUNTU_USER_ENV=(
 )
 RUN_AS_UBUNTU=(runuser -u ubuntu -- env "${UBUNTU_USER_ENV[@]}")
 "${RUN_AS_UBUNTU[@]}" systemctl --user enable --now podman.socket
+"${RUN_AS_UBUNTU[@]}" systemctl --user enable podman-restart.service
 
 # CDI 모드 nvidia
 step "6/10" "NVIDIA GPU를 Podman 컨테이너에서 사용할 CDI 설정을 확인합니다"
@@ -169,51 +170,18 @@ for img in owasp-llm-base-gpu owasp-llm-vuln-rag owasp-llm-vuln-agent owasp-llm-
 done
 PULLSH
 
-# Quadlet의 Restart=always는 컨테이너 종료를 감지하면 새 컨테이너를 만들 수 있다.
-# 수강생이 컨테이너 안에서 바꾼 secure-coding source가 그 과정에서 사라지지
-# 않도록 역할별 host source를 이미지에서 추출하고 동일 경로에 bind mount한다.
-echo "[install-lab] preparing restart-persistent learner-editable source"
-RUNTIME_SOURCE_ROOT=/home/ubuntu/work/runtime-src
-install -d -m 0755 -o ubuntu -g ubuntu "$RUNTIME_SOURCE_ROOT"
-
-seed_editable_tree() {
-  local unit="$1"
-  local image="$2"
-  local destination="$RUNTIME_SOURCE_ROOT/$unit/app"
-  local candidate="$RUNTIME_SOURCE_ROOT/.${unit}.next"
-
-  rm -rf "$candidate"
-  install -d -m 0755 -o ubuntu -g ubuntu "$candidate"
-  "${RUN_AS_UBUNTU[@]}" podman run --rm --entrypoint tar \
-    "$image" -C /app -cf - app | tar -C "$candidate" -xf -
-  rm -rf "$destination"
-  install -d -m 0755 -o ubuntu -g ubuntu "$(dirname "$destination")"
-  mv "$candidate/app" "$destination"
-  rmdir "$candidate"
-  chown -R ubuntu:ubuntu "$RUNTIME_SOURCE_ROOT/$unit"
-}
-
-for rag_unit in \
-  lab-prompt-rag \
-  lab-data-rag \
-  lab-output-rag \
-  lab-knowledge-rag \
-  lab-resource-rag; do
-  seed_editable_tree \
-    "$rag_unit" \
-    "ghcr.io/${IMAGE_NAMESPACE}/owasp-llm-vuln-rag:${IMAGE_TAG}"
-done
-
-seed_editable_tree \
-  lab-vuln-agent \
-  "ghcr.io/${IMAGE_NAMESPACE}/owasp-llm-vuln-agent:${IMAGE_TAG}"
+# Secure-coding source stays in each container's writable layer. The six
+# learner-editable containers use Podman's own restart=always policy instead of
+# Quadlet so `podman restart` keeps the same container and edited source.
+# reset-lab removes and recreates an allowlisted container from the vulnerable
+# published image when a clean baseline is required.
 
 # 7) 시나리오 결정
 echo "[install-lab] enabled scenarios: day1 day2 day3 day4 day5"
 
-# 8) Quadlet으로 컨테이너 systemd user unit 작성 및 실행
-# podman generate systemd는 deprecated라 새 설치에서는 Quadlet을 직접 사용한다.
-step "9/10" "Quadlet unit, 모든 실습 컨테이너, 모델, 선택 도구를 준비합니다"
+# 8) 상시 기반 서비스는 Quadlet, 편집 대상은 직접 Podman으로 작성 및 실행
+# podman generate systemd는 deprecated라 기반 서비스는 Quadlet을 직접 사용한다.
+step "9/10" "Quadlet 기반 서비스와 직접 Podman 실습 컨테이너를 준비합니다"
 mkdir -p /home/ubuntu/.LLMGoat/models /home/ubuntu/.LLMGoat/cache
 chown -R ubuntu:ubuntu /home/ubuntu/.LLMGoat
 if [ -f /home/ubuntu/.LLMGoat/models/gemma-2.gguf ]; then
@@ -245,6 +213,18 @@ curl -fsSL "$RAW_URL/infrastructure/portal/index.html" -o /home/ubuntu/work/port
 chown -R ubuntu:ubuntu /home/ubuntu/work/portal
 
 echo "[install-lab] installing the allowlisted learner reset command"
+EDITABLE_LAB_RUNNER_DIR=/home/ubuntu/.local/bin
+install -d -m 0755 -o ubuntu -g ubuntu "$EDITABLE_LAB_RUNNER_DIR"
+EDITABLE_LAB_RUNNER_CANDIDATE=$EDITABLE_LAB_RUNNER_DIR/recreate-editable-lab.next
+curl -fsSL \
+  "$RAW_URL/infrastructure/scripts/student/recreate-editable-lab" \
+  -o "$EDITABLE_LAB_RUNNER_CANDIDATE"
+bash -n "$EDITABLE_LAB_RUNNER_CANDIDATE"
+install -m 0755 -o ubuntu -g ubuntu \
+  "$EDITABLE_LAB_RUNNER_CANDIDATE" \
+  "$EDITABLE_LAB_RUNNER_DIR/recreate-editable-lab"
+rm -f "$EDITABLE_LAB_RUNNER_CANDIDATE"
+
 RESET_LAB_CANDIDATE=/usr/local/bin/reset-lab.next
 curl -fsSL \
   "$RAW_URL/infrastructure/scripts/student/reset-lab" \
@@ -266,6 +246,31 @@ chown -R ubuntu:ubuntu /home/ubuntu/work/dvla
 
 QUADLET_DIR="/home/ubuntu/.config/containers/systemd"
 install -d -m 0755 -o ubuntu -g ubuntu "$QUADLET_DIR"
+
+editable_units=(
+  lab-prompt-rag
+  lab-data-rag
+  lab-output-rag
+  lab-knowledge-rag
+  lab-resource-rag
+  lab-vuln-agent
+)
+"${RUN_AS_UBUNTU[@]}" bash <<'EDITABLELEGACYSH'
+set -euo pipefail
+for unit in \
+  lab-prompt-rag \
+  lab-data-rag \
+  lab-output-rag \
+  lab-knowledge-rag \
+  lab-resource-rag \
+  lab-vuln-agent; do
+  systemctl --user stop "$unit.service" >/dev/null 2>&1 || true
+  systemctl --user reset-failed "$unit.service" >/dev/null 2>&1 || true
+done
+EDITABLELEGACYSH
+for unit in "${editable_units[@]}"; do
+  rm -f "$QUADLET_DIR/$unit.container"
+done
 
 QUADLET_FINGERPRINT_BEFORE=$(
   for file in "$QUADLET_DIR"/lab-*.container; do
@@ -332,72 +337,6 @@ Restart=always
 WantedBy=default.target
 EOF
 
-declare -A RAG_PORTS=(
-  [day1]=8000
-  [day2]=8010
-  [day3]=8011
-  [day4]=8012
-  [day5]=8013
-)
-declare -A RAG_UNITS=(
-  [day1]=lab-prompt-rag
-  [day2]=lab-data-rag
-  [day3]=lab-output-rag
-  [day4]=lab-knowledge-rag
-  [day5]=lab-resource-rag
-)
-
-for scenario in day1 day2 day3 day4 day5; do
-  rag_port="${RAG_PORTS[$scenario]}"
-  rag_unit="${RAG_UNITS[$scenario]}"
-  cat > "$QUADLET_DIR/${rag_unit}.container" <<EOF
-[Unit]
-Description=OWASP LLM Lab - ${scenario} scenario RAG
-After=lab-ollama.container
-Requires=lab-ollama.container
-
-[Container]
-ContainerName=${rag_unit}
-Image=ghcr.io/${IMAGE_NAMESPACE}/owasp-llm-vuln-rag:${IMAGE_TAG}
-Network=host
-Environment=DEFAULT_SCENARIO=${scenario}
-Environment=SCENARIO=${scenario}
-Environment=PORT=${rag_port}
-Environment=OLLAMA_URL=http://localhost:11434
-Environment=OLLAMA_MODEL=$OLLAMA_MODEL
-Environment=OLLAMA_EMBED_MODEL=$OLLAMA_EMBED_MODEL
-Volume=/home/ubuntu/work/runtime-src/${rag_unit}/app:/app/app:Z
-Exec=uv run uvicorn app.main:app --host 0.0.0.0 --port ${rag_port}
-
-[Service]
-Restart=always
-
-[Install]
-WantedBy=default.target
-EOF
-done
-
-cat > "$QUADLET_DIR/lab-vuln-agent.container" <<EOF
-[Unit]
-Description=OWASP LLM Lab - Vulnerable Agent
-After=lab-ollama.container
-Requires=lab-ollama.container
-
-[Container]
-ContainerName=lab-vuln-agent
-Image=ghcr.io/${IMAGE_NAMESPACE}/owasp-llm-vuln-agent:${IMAGE_TAG}
-Network=host
-Environment=OLLAMA_URL=http://localhost:11434
-Environment=OLLAMA_MODEL=$OLLAMA_MODEL
-Volume=/home/ubuntu/work/runtime-src/lab-vuln-agent/app:/app/app:Z
-
-[Service]
-Restart=always
-
-[Install]
-WantedBy=default.target
-EOF
-
 cat > "$QUADLET_DIR/lab-llmgoat.container" <<EOF
 [Unit]
 Description=OWASP LLM Lab - LLMGoat
@@ -432,9 +371,10 @@ Requires=lab-ollama.container
 [Container]
 ContainerName=lab-dvla
 Image=ghcr.io/${IMAGE_NAMESPACE}/owasp-llm-dvla:${IMAGE_TAG}
-Network=host
-Environment=OLLAMA_HOST=http://localhost:11434
-Environment=OLLAMA_API_BASE=http://localhost:11434
+Network=slirp4netns:allow_host_loopback=true
+PublishPort=8501:8501
+Environment=OLLAMA_HOST=http://host.containers.internal:11434
+Environment=OLLAMA_API_BASE=http://host.containers.internal:11434
 Environment=model_name=ollama-local-llama3
 Volume=/home/ubuntu/work/dvla/llm-config.yaml:/app/llm-config.yaml:Z
 
@@ -452,7 +392,7 @@ Description=OWASP LLM Lab - Fake Model Registry
 [Container]
 ContainerName=lab-fake-registry
 Image=docker.io/library/python:3.12-slim
-Network=host
+PublishPort=8002:8002
 Volume=/home/ubuntu/work/fake-registry:/app:Z
 Exec=python /app/server.py
 
@@ -470,7 +410,7 @@ Description=OWASP LLM Lab - Portal
 [Container]
 ContainerName=lab-portal
 Image=docker.io/library/python:3.12-slim
-Network=host
+PublishPort=8080:8080
 Volume=/home/ubuntu/work/portal:/app:Z
 Exec=python -m http.server 8080 --directory /app
 
@@ -497,17 +437,15 @@ fi
   REFRESH_IMAGES="$REFRESH_IMAGES" \
   QUADLET_CHANGED="$QUADLET_CHANGED" \
   FAKE_REGISTRY_CHANGED="$FAKE_REGISTRY_CHANGED" \
+  IMAGE_NAMESPACE="$IMAGE_NAMESPACE" \
+  IMAGE_TAG="$IMAGE_TAG" \
+  OLLAMA_MODEL="$OLLAMA_MODEL" \
+  OLLAMA_EMBED_MODEL="$OLLAMA_EMBED_MODEL" \
   bash <<'QUADLETSH'
 set -euo pipefail
 echo "[install-lab] reloading systemd user units and reconciling lab services"
 units=(
   lab-ollama
-  lab-prompt-rag
-  lab-data-rag
-  lab-output-rag
-  lab-knowledge-rag
-  lab-resource-rag
-  lab-vuln-agent
   lab-llmgoat
   lab-dvla
   lab-fake-registry
@@ -524,7 +462,7 @@ for unit in "${units[@]}"; do
 
   image_backed=false
   case "$unit" in
-    lab-prompt-rag|lab-data-rag|lab-output-rag|lab-knowledge-rag|lab-resource-rag|lab-vuln-agent|lab-llmgoat|lab-dvla)
+    lab-llmgoat|lab-dvla)
       image_backed=true
       ;;
   esac
@@ -541,23 +479,27 @@ for unit in "${units[@]}"; do
     restart_reason="fake-registry source refreshed"
   fi
 
-  if [ -z "$restart_reason" ]; then
-    case "$unit" in
-      lab-prompt-rag|lab-data-rag|lab-output-rag|lab-knowledge-rag|lab-resource-rag|lab-vuln-agent)
-        if ! podman inspect --format '{{range .Mounts}}{{println .Destination}}{{end}}' "$unit" \
-          | grep -qx '/app/app'; then
-          restart_reason="learner-editable /app/app source mount missing"
-        fi
-        ;;
-    esac
-  fi
-
   if [ -n "$restart_reason" ]; then
     echo "[install-lab] restarting $unit.service: $restart_reason"
     systemctl --user restart "$unit.service"
   else
     echo "[install-lab] $unit.service already matches requested configuration"
   fi
+done
+
+echo "[install-lab] recreating learner-editable containers with Podman restart policy"
+for unit in \
+  lab-prompt-rag \
+  lab-data-rag \
+  lab-output-rag \
+  lab-knowledge-rag \
+  lab-resource-rag \
+  lab-vuln-agent; do
+  IMAGE_NAMESPACE="$IMAGE_NAMESPACE" \
+  IMAGE_TAG="$IMAGE_TAG" \
+  OLLAMA_MODEL="$OLLAMA_MODEL" \
+  OLLAMA_EMBED_MODEL="$OLLAMA_EMBED_MODEL" \
+    /home/ubuntu/.local/bin/recreate-editable-lab "$unit"
 done
 QUADLETSH
 
@@ -676,31 +618,53 @@ for container in "${!expected_images[@]}"; do
   fi
 done
 
-declare -A editable_source_files=(
+declare -A container_layer_source_files=(
   [lab-prompt-rag]="/app/app/secure_coding.py"
   [lab-data-rag]="/app/app/secure_coding.py"
-  [lab-output-rag]="/app/app/secure_coding.py"
+  [lab-output-rag]="/app/app/templates/index.html"
   [lab-knowledge-rag]="/app/app/secure_coding.py"
   [lab-resource-rag]="/app/app/secure_coding.py"
   [lab-vuln-agent]="/app/app/main.py"
 )
-for container in "${!editable_source_files[@]}"; do
-  source_file="${editable_source_files[$container]}"
+for container in "${!container_layer_source_files[@]}"; do
+  source_file="${container_layer_source_files[$container]}"
   source_ready=false
   for attempt in $(seq 1 30); do
-    if podman inspect --format '{{range .Mounts}}{{println .Destination}}{{end}}' "$container" 2>/dev/null \
+    if ! podman inspect --format '{{range .Mounts}}{{println .Destination}}{{end}}' "$container" 2>/dev/null \
       | grep -qx '/app/app' &&
-      podman exec "$container" test -f "$source_file" 2>/dev/null; then
+      podman exec "$container" test -f "$source_file" 2>/dev/null &&
+      podman exec "$container" test -w "$source_file" 2>/dev/null; then
       source_ready=true
       break
     fi
     sleep 2
   done
   if [ "$source_ready" != true ]; then
-    echo "ERROR: $container did not stabilize with /app/app and learner-editable source $source_file" >&2
+    echo "ERROR: $container must expose writable image source without an /app/app mount: $source_file" >&2
     exit 1
   fi
+  echo "[install-lab] secure-coding source ready: $container layer=$source_file mount=none"
 done
+
+# LLMGoat의 첫 기동은 영속 모델 디렉터리를 채우고 모델을 GPU에 올린다.
+# 이 과정이 끝나기 전에 만들어진 rootless port forward는 내부 서버가
+# 준비된 뒤에도 연결을 reset하는 경우가 있으므로, 내부 health를 먼저
+# 확인한 다음 모델이 준비된 상태에서 Quadlet을 한 번 다시 시작한다.
+llmgoat_internal_ready=false
+for _ in $(seq 1 300); do
+  if podman exec lab-llmgoat \
+    curl -fsS --max-time 5 http://127.0.0.1:5000/healthz >/dev/null 2>&1; then
+    llmgoat_internal_ready=true
+    break
+  fi
+  sleep 2
+done
+if [ "$llmgoat_internal_ready" != "true" ]; then
+  echo "ERROR: LLMGoat internal health did not become ready after model initialization" >&2
+  exit 1
+fi
+systemctl --user restart lab-llmgoat.service
+echo "[install-lab] LLMGoat model initialization completed; refreshed rootless port publish"
 
 health_urls=(
   http://localhost:11434/api/tags
@@ -731,35 +695,28 @@ for url in "${health_urls[@]}"; do
   fi
 done
 
-# `podman ps`의 PORTS 열은 publish된 포트만 표시한다. Network=host인
-# 서비스는 열이 비어 있어도 EC2 host의 같은 포트에서 직접 listen한다.
-# 설치가 성공하기 전에 각 서비스가 의도한 두 노출 방식 중 하나를
-# 실제로 사용하는지 확인해, 빠진 PublishPort와 잘못된 network mode를 구분한다.
-declare -A host_network_ports=(
+# 모든 학습 서비스는 격리된 container network를 사용하고 host의 같은
+# 번호에 명시적으로 publish한다. Network=host가 다시 들어오거나 publish가
+# 빠지면 설치 단계에서 즉시 실패한다.
+declare -A published_ports=(
+  [lab-ollama]=11434
   [lab-prompt-rag]=8000
   [lab-data-rag]=8010
   [lab-output-rag]=8011
   [lab-knowledge-rag]=8012
   [lab-resource-rag]=8013
   [lab-vuln-agent]=8001
+  [lab-llmgoat]=5000
   [lab-dvla]=8501
   [lab-fake-registry]=8002
   [lab-portal]=8080
 )
-for container in "${!host_network_ports[@]}"; do
+for container in "${!published_ports[@]}"; do
   network_mode=$(podman inspect --format '{{.HostConfig.NetworkMode}}' "$container")
-  if [ "$network_mode" != "host" ]; then
-    echo "ERROR: $container must expose ${host_network_ports[$container]} through Network=host, got $network_mode" >&2
+  if [ "$network_mode" = "host" ]; then
+    echo "ERROR: $container must use an isolated network, got Network=host" >&2
     exit 1
   fi
-  echo "[install-lab] port exposure ready: $container network=host host_port=${host_network_ports[$container]}"
-done
-
-declare -A published_ports=(
-  [lab-ollama]=11434
-  [lab-llmgoat]=5000
-)
-for container in "${!published_ports[@]}"; do
   container_port="${published_ports[$container]}/tcp"
   published=$(podman port "$container" "$container_port")
   if [ -z "$published" ]; then
@@ -819,11 +776,10 @@ OWASP LLM Lab 설치가 완료되었습니다.
   sudo -u ubuntu podman ps
 
 포트 노출 방식:
-  - RAG, Agent, DVLA, fake registry, Portal은 Network=host를 사용하므로
-    podman ps의 PORTS 열이 비어 있어도 아래의 고정 host port에서 동작합니다.
-  - Ollama와 LLMGoat는 격리 network에서 PublishPort를 사용하므로 PORTS 열에
-    11434->11434, 5000->5000 mapping이 표시됩니다.
-  - 설치 과정은 두 방식과 각 localhost health endpoint를 모두 검증했습니다.
+  - 모든 서비스는 격리된 container network를 사용하고 host의 같은 번호에
+    명시적으로 publish됩니다. podman ps의 PORTS 열에서 mapping을 확인합니다.
+  - RAG, Agent, DVLA는 host.containers.internal을 통해 host의 Ollama에 연결합니다.
+  - 설치 과정은 Network=host 부재, 각 publish mapping, localhost health를 검증했습니다.
 
 주요 서비스:
   - Lab Portal            8080

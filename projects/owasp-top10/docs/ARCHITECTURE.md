@@ -131,6 +131,8 @@ flowchart LR
 
 안전 endpoint의 request schema에는 `customer_id` 필드가 없습니다. 인증과 고객 객체 인가는 `docker/vuln-rag/app/scenarios/day2.py`의 token map과 `docker/vuln-rag/app/main.py`의 route에서 서버가 결정하며, 모델은 사용자 신원이나 조회 대상을 선택하지 않습니다. 공개 GHCR의 동일 `vuln-rag` 이미지에 취약·안전 경로가 함께 있으므로 수강생은 별도 build 없이 source와 HTTP 결과만 비교합니다.
 
+LLM02의 주석 전환 지점은 workshop에만 적용되는 별도 우회 경로가 아니다. `docker/vuln-rag/app/main.py`의 `run_llm02_policy_chat()`을 workshop endpoint와 실제 UI의 `/api/chat`이 함께 호출한다. 따라서 안전 호출이 활성화된 동안 인증 header가 없는 8010 UI 요청도 고객 DB 조회와 Ollama 호출 전에 차단된다.
+
 ## LLM08 embedding dataflow와 경계
 
 LLM08 수강생 앱 scaffold는 정본 setup 저장소의 `examples/llm08/mini_vector_search_app.py`에 있습니다. 설치·검증·종료 순서는 [LLM08 embedding lab setup](https://github.com/gasbugs/owasp-llm-lab-setup-guide/blob/main/docs/LLM08-SETUP.md)을 정본으로 사용합니다.
@@ -153,7 +155,7 @@ flowchart LR
 
 | 경계/endpoint | 노출 범위 | 인증·입력 계약 | 용도 |
 |---|---|---|---|
-| Ollama `POST :11434/api/embed` | EC2 내부 host network | Day 4 backend가 고정 model로 호출 | 실제 embedding 생성 |
+| Ollama `POST :11434/api/embed` | EC2 host에 publish된 포트, 컨테이너에서는 `host.containers.internal` 사용 | Day 4 backend가 고정 model로 호출 | 실제 embedding 생성 |
 | Day 4 `POST :8012/api/embed` | EC2 loopback/SSM | Bearer token을 server-side principal/tenant로 변환; body tenant 불허 | 학습자 분석과 미니 앱의 vector source |
 | Day 4 `POST :8012/api/labs/llm08/{vulnerable,safe}/search` | EC2 loopback/SSM | 동일 인증 context, filter 위치만 다름 | 구조화된 hit 비교 |
 | Day 4 `GET :8012/api/lab/llm08/target-vector` | EC2 loopback/SSM | Bearer token 필요; fixture plaintext는 응답하지 않음 | 제한된 vector 단서 추정 실습 |
