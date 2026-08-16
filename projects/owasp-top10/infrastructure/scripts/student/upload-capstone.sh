@@ -2,7 +2,7 @@
 # Upload the student Capstone starter from the local student package to EC2.
 #
 # Usage:
-#   AWS_PROFILE=owasp-llm AWS_REGION=us-east-1 STUDENT=yourname \
+#   AWS_PROFILE=default AWS_REGION=us-east-1 STUDENT=yourname \
 #     bash infrastructure/scripts/student/upload-capstone.sh
 #
 # Existing destinations fail closed. To keep a timestamped backup and install
@@ -10,7 +10,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-: "${AWS_PROFILE:=owasp-llm}"
+: "${AWS_PROFILE:=default}"
 : "${AWS_REGION:?AWS_REGION is required, e.g. us-east-1}"
 : "${STUDENT:?STUDENT is required, e.g. alice}"
 : "${TF_DIR:=infrastructure/terraform}"

@@ -3,8 +3,8 @@
 #   cp terraform.tfvars.example terraform.tfvars
 ################################################################################
 
-# AWS profile (aws configure --profile owasp-llm 또는 강사 안내 방식)
-aws_profile = "owasp-llm"
+# AWS 기본 profile (`aws configure`로 설정). 다른 profile은 필요할 때만 변경한다.
+aws_profile = "default"
 region      = "us-east-1" # 기본 us-east-1, GPU 수용량 부족 시 us-west-2
 
 # 기본값은 계정 ID를 기준으로 g6.xlarge 제공 AZ 중 하나를 결정적으로 선택한다.

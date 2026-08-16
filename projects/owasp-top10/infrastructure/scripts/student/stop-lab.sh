@@ -3,7 +3,7 @@
 # EBS는 유지 → 내일 start-lab.sh로 작업 상태 복원. 이 구성은 EIP를 만들지 않아 public IP는 바뀔 수 있음
 set -euo pipefail
 
-: "${AWS_PROFILE:?usage: AWS_PROFILE=<profile> AWS_REGION=<region> STUDENT=<id> bash stop-lab.sh}"
+: "${AWS_PROFILE:=default}"
 : "${AWS_REGION:=us-east-1}"
 : "${STUDENT:?STUDENT 환경변수 필요}"
 

@@ -3,7 +3,7 @@
 # 새 모델 (2026-05-20): aws ec2 start-instances로 본인 EC2 켜기
 set -euo pipefail
 
-: "${AWS_PROFILE:?usage: AWS_PROFILE=<profile> AWS_REGION=<region> STUDENT=<id> bash start-lab.sh}"
+: "${AWS_PROFILE:=default}"
 : "${AWS_REGION:=us-east-1}"
 : "${STUDENT:?STUDENT 환경변수 필요 — 본인 student-id}"
 

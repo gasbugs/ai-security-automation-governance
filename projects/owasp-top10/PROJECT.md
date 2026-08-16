@@ -6,10 +6,11 @@ Terraform root는 `infrastructure/terraform`이며 방화벽 프로젝트와 상
 
 ## 실행
 
-AWS profile과 region을 지정해 사전 검사를 수행합니다.
+기본 AWS profile과 region으로 사전 검사를 수행합니다. 다른 profile을 사용할
+때만 `AWS_PROFILE`을 덮어씁니다.
 
 ```bash
-export AWS_PROFILE=owasp-llm
+export AWS_PROFILE=default
 export AWS_REGION=us-east-1
 make preflight
 ```

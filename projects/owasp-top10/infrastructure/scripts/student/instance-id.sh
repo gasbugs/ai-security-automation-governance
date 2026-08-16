@@ -2,7 +2,7 @@
 # Print the single lab EC2 instance id for the current student.
 set -euo pipefail
 
-: "${AWS_PROFILE:?usage: AWS_PROFILE=<profile> AWS_REGION=<region> STUDENT=<id> bash instance-id.sh}"
+: "${AWS_PROFILE:=default}"
 : "${AWS_REGION:=us-east-1}"
 : "${STUDENT:?STUDENT environment variable is required}"
 

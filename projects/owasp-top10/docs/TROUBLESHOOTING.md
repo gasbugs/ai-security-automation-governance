@@ -13,7 +13,7 @@ You have requested more vCPU capacity than your current vCPU limit
 
 ```bash
 aws service-quotas get-service-quota \
-  --profile owasp-llm --region us-east-1 \
+  --profile default --region us-east-1 \
   --service-code ec2 --quota-code L-DB2E81BA \
   --query "Quota.{Name:QuotaName,Value:Value}"
 ```
@@ -56,7 +56,7 @@ availability_zone = "us-east-1c"
 
 ```bash
 aws ssm describe-instance-information \
-  --profile owasp-llm --region us-east-1 \
+  --profile default --region us-east-1 \
   --query "InstanceInformationList[].{Id:InstanceId,Ping:PingStatus}"
 ```
 
@@ -211,7 +211,7 @@ python3 learner_vector_app.py --serve --host 0.0.0.0 --port 18080
 # [로컬 노트북]
 session-manager-plugin --version
 aws ssm describe-instance-information \
-  --profile owasp-llm --region us-east-1 \
+  --profile default --region us-east-1 \
   --query 'InstanceInformationList[].{Id:InstanceId,Ping:PingStatus}'
 lsof -nP -iTCP:18080 -sTCP:LISTEN || true
 ```
@@ -224,7 +224,7 @@ lsof -nP -iTCP:18080 -sTCP:LISTEN || true
 
 ```bash
 aws ec2 describe-instances \
-  --profile owasp-llm --region us-east-1 \
+  --profile default --region us-east-1 \
   --filters "Name=tag:Course,Values=owasp-llm-2026" \
   --query "Reservations[].Instances[].{Id:InstanceId,State:State.Name,Type:InstanceType}"
 ```
@@ -232,7 +232,7 @@ aws ec2 describe-instances \
 즉시 중지:
 
 ```bash
-AWS_PROFILE=owasp-llm AWS_REGION=us-east-1 STUDENT=yourname \
+AWS_PROFILE=default AWS_REGION=us-east-1 STUDENT=yourname \
   bash infrastructure/scripts/student/stop-lab.sh
 ```
 

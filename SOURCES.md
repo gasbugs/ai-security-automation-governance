@@ -18,7 +18,7 @@ table과 테스트 인스턴스까지 Terraform으로 완성하도록 확장했�
 ## OWASP Top 10 프로젝트
 
 - setup 원본: <https://github.com/gasbugs/owasp-llm-lab-setup-guide>
-- 동기화 기준 커밋: `3beef6a7c567750c732434bc138c5f5657cf5715`
+- 동기화 기준 커밋: `369a2473674b504034c6d4a2fbea3bc0cdf5c1c2`
 - 원본 경로:
   - `infrastructure/terraform`
   - `infrastructure/scripts/student`
@@ -39,6 +39,13 @@ allowlist 기반 배포 이미지 재생성, 모든 앱의 명시적 port publis
 8010 UI의 `/api/chat`이 같은 실행 함수를 사용하므로 안전 호출 전환 후 인증
 없는 UI 요청도 모델 호출 전에 차단합니다. 이 저장소가 별도로 제공하는 계정별
 GPU AZ 분산, 최소 권한 IAM, 18:00 KST 자동 중지 정책은 유지합니다.
+
+후속 동기화에서는 LLM01~LLM10 lifecycle plan과 일치하도록 8010의 RAG corpus
+오염 실습을 `LLM08 RAG`로 명명하고 `reset-lab llm08-rag`를 정본 ID로
+반영했습니다. `llm04`는 기존 환경 호환 alias로만 유지합니다. LLM02 Planner
+인가 설명과 이 저장소의 기본 AWS profile·계정별 AZ·18:00 자동 중지 확장은
+덮어쓰지 않았습니다. 컨테이너 source와 E2E는 복제하지 않고 위 setup 커밋과
+해당 커밋이 게시한 immutable GHCR image를 계속 정본으로 참조합니다.
 
 ## 라이선스
 

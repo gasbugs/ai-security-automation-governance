@@ -2,11 +2,11 @@
 # Local laptop preflight before Terraform apply and daily lab operations.
 #
 # Usage:
-#   AWS_PROFILE=owasp-llm AWS_REGION=us-east-1 \
+#   AWS_PROFILE=default AWS_REGION=us-east-1 \
 #     bash infrastructure/scripts/student/preflight-local.sh
 set -euo pipefail
 
-: "${AWS_PROFILE:=owasp-llm}"
+: "${AWS_PROFILE:=default}"
 : "${AWS_REGION:=us-east-1}"
 : "${REQUIRED_G_VCPU:=4}"
 

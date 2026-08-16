@@ -13,7 +13,6 @@ variable "availability_zone" {
   description = "GPU 인스턴스를 고정 배포할 AZ. null이면 계정 ID를 기준으로 g6.xlarge 제공 AZ에 결정적으로 분산한다."
   type        = string
   default     = null
-
   validation {
     condition = (
       var.availability_zone == null
@@ -27,7 +26,7 @@ variable "availability_zone" {
 variable "aws_profile" {
   description = "로컬 AWS CLI profile 이름 (null이면 AWS 표준 자격 증명 탐색 순서 사용)"
   type        = string
-  default     = null
+  default     = "default"
   validation {
     condition     = var.aws_profile == null ? true : can(regex("^[A-Za-z0-9_.@-]+$", var.aws_profile))
     error_message = "aws_profile은 AWS CLI profile 이름으로 사용할 수 있는 문자만 포함해야 합니다."

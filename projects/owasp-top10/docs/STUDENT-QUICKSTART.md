@@ -15,8 +15,8 @@
 ## 1. AWS CLI 설정
 
 ```bash
-aws configure --profile owasp-llm
-aws sts get-caller-identity --profile owasp-llm
+aws configure
+aws sts get-caller-identity --profile default
 ```
 
 `aws sts get-caller-identity`가 본인 계정 ARN을 출력하면 통과입니다.
@@ -30,7 +30,7 @@ aws sts get-caller-identity --profile owasp-llm
 
 ```bash
 aws service-quotas get-service-quota \
-  --profile owasp-llm --region us-east-1 \
+  --profile default --region us-east-1 \
   --service-code ec2 --quota-code L-DB2E81BA \
   --query "Quota.{Name:QuotaName,Value:Value}"
 ```
@@ -42,7 +42,7 @@ aws service-quotas get-service-quota \
 저장소 루트에서 실행합니다.
 
 ```bash
-AWS_PROFILE=owasp-llm AWS_REGION=us-east-1 \
+AWS_PROFILE=default AWS_REGION=us-east-1 \
   bash infrastructure/scripts/student/preflight-local.sh
 ```
 
@@ -58,7 +58,7 @@ cp terraform.tfvars.example terraform.tfvars
 `terraform.tfvars`에서 최소 아래 값을 수정합니다.
 
 ```hcl
-aws_profile = "owasp-llm"
+aws_profile = "default"
 region      = "us-east-1"
 course_id   = "owasp-llm-2026"
 
@@ -110,10 +110,10 @@ terraform apply -auto-approve
 
 ```bash
 export STUDENT=yourname
-export INSTANCE_ID=$(AWS_PROFILE=owasp-llm AWS_REGION=us-east-1 STUDENT="$STUDENT" \
+export INSTANCE_ID=$(AWS_PROFILE=default AWS_REGION=us-east-1 STUDENT="$STUDENT" \
   bash infrastructure/scripts/student/instance-id.sh)
 
-aws ssm start-session --profile owasp-llm --region us-east-1 \
+aws ssm start-session --profile default --region us-east-1 \
   --target "$INSTANCE_ID"
 ```
 
@@ -211,7 +211,7 @@ curl -s http://localhost:8002/api/v1/models | head
 | LLM01 시큐어 코딩 | `reset-lab llm01` | `curl -sS http://localhost:8000/healthz` |
 | LLM01-B | `reset-lab llm01b` | `curl -sS http://localhost:8000/healthz` |
 | LLM02 시큐어 코딩 | `reset-lab llm02` | `curl -sS http://localhost:8010/healthz` |
-| LLM04 | `reset-lab llm04` | `curl -sS http://localhost:8010/healthz` |
+| LLM08 RAG corpus | `reset-lab llm08-rag` | `curl -sS http://localhost:8010/healthz` |
 | LLM05 | `reset-lab llm05` | `curl -sS http://localhost:8011/healthz` |
 | LLM06 삭제 실습 | `reset-lab llm06` | `curl -sS http://localhost:8001/healthz` |
 | LLM08 시큐어 코딩 | `reset-lab llm08` | `curl -sS http://localhost:8012/healthz` |
@@ -257,14 +257,14 @@ curl -fsSL https://raw.githubusercontent.com/gasbugs/owasp-llm-lab-setup-guide/m
 ## 11. 매일 시작
 
 ```bash
-AWS_PROFILE=owasp-llm AWS_REGION=us-east-1 STUDENT=yourname \
+AWS_PROFILE=default AWS_REGION=us-east-1 STUDENT=yourname \
   bash infrastructure/scripts/student/start-lab.sh
 ```
 
 ## 12. 매일 종료
 
 ```bash
-AWS_PROFILE=owasp-llm AWS_REGION=us-east-1 STUDENT=yourname \
+AWS_PROFILE=default AWS_REGION=us-east-1 STUDENT=yourname \
   bash infrastructure/scripts/student/stop-lab.sh
 ```
 
