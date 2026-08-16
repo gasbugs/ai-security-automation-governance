@@ -115,23 +115,23 @@ Terraform의 `lab_image_namespace`와 `lab_image_tag`도 user-data가 설치 스
 | `lab-dvla` | 8501 | Damn Vulnerable LLM Agent 실습 |
 | `lab-fake-registry` | 8002 | Day 4 LLM03 공급망 실습용 fake registry. 브라우저/API 확인 경로는 `/api/v1/models` |
 
-## LLM02 고객 인증과 데이터 최소화 경계
+## LLM02 Planner Tool Proposal과 DB 조회 전 인가 경계
 
 ```mermaid
 flowchart LR
-  V["취약 endpoint"] -->|"body customer_id"| DB["합성 SQLite 고객 DB"]
-  DB -->|"SELECT *"| VM["전체 레코드를 모델 context로 전달"]
-  S["안전 endpoint"] --> A["Bearer token 검증"]
-  A -->|"server-side token map"| C["인증 고객 ID 결정"]
-  C --> DB
-  DB --> F["업무 필드 allowlist"]
-  F --> SM["최소 context를 모델에 전달"]
-  SM --> R["응답 marker redaction"]
+  T["C-2001 Bearer token"] --> A["Python API 인증과 principal"]
+  U["사용자 문장 + read-only tool schema"] --> P["Ollama Structured Output Planner"]
+  P --> Q["customer_id·fields Tool Proposal"]
+  A --> E["Python Tool Executor"]
+  Q --> E
+  E -->|"취약: proposal 신뢰"| DB["합성 SQLite 고객 DB"]
+  E -->|"안전: principal scope + field allowlist"| D["DB 조회 전 차단"]
+  DB --> R["Answer LLM"]
 ```
 
-안전 endpoint의 request schema에는 `customer_id` 필드가 없습니다. 인증과 고객 객체 인가는 `docker/vuln-rag/app/scenarios/day2.py`의 token map과 `docker/vuln-rag/app/main.py`의 route에서 서버가 결정하며, 모델은 사용자 신원이나 조회 대상을 선택하지 않습니다. 공개 GHCR의 동일 `vuln-rag` 이미지에 취약·안전 경로가 함께 있으므로 수강생은 별도 build 없이 source와 HTTP 결과만 비교합니다.
+Planner는 Bearer token, DB credential, 전체 고객 데이터와 다른 고객 레코드를 받지 않는다. 실제 Ollama가 temperature 0의 Structured Output으로 `get_customer_record`의 `customer_id`와 `fields`를 제안한다. 취약점은 모델이 관리자 credential을 가진 것이 아니라 애플리케이션의 광범위한 DB 권한으로 실행되는 Tool Executor가 이 제안을 인가 없이 실행하는 데 있다. 안전 실행기는 인증 principal과 고객 범위 및 배송 업무 field allowlist를 비교한 뒤에만 DB를 조회한다.
 
-LLM02의 주석 전환 지점은 workshop에만 적용되는 별도 우회 경로가 아니다. `docker/vuln-rag/app/main.py`의 `run_llm02_policy_chat()`을 workshop endpoint와 실제 UI의 `/api/chat`이 함께 호출한다. 따라서 안전 호출이 활성화된 동안 인증 header가 없는 8010 UI 요청도 고객 DB 조회와 Ollama 호출 전에 차단된다.
+`docker/vuln-rag/app/secure_coding.py`의 `select_llm02_tool_executor()`는 취약·안전 실행기를 인접 호출로 둔다. workshop endpoint와 실제 UI의 `/api/chat`이 같은 core를 사용하므로 안전 호출이 활성화되면 C-2002 요청은 두 경로 모두 DB 조회와 Answer LLM 전에 차단된다. body의 `customer_id` 직접 지정은 핵심 LLM 공격이 아닌 전통적인 IDOR 대조군이며 안전 전용 API에서 Planner 전에 `422`로 거부한다.
 
 ## LLM08 embedding dataflow와 경계
 
