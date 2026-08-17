@@ -1,0 +1,16 @@
+[Unit]
+Description=OWASP NeMo Guardrails Gateway
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=OLLAMA_URL=http://127.0.0.1:11434
+Environment=NEMO_CONFIG_DIR=/opt/owasp-guardrail-gateway/config
+Environment=PRESIDIO_ENABLED=false
+ExecStart=/opt/owasp-guardrail-gateway/venv/bin/uvicorn gateway:app --app-dir /opt/owasp-guardrail-gateway --host 0.0.0.0 --port 11500
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
