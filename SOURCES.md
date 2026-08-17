@@ -18,7 +18,7 @@ table과 테스트 인스턴스까지 Terraform으로 완성하도록 확장했�
 ## OWASP Top 10 프로젝트
 
 - setup 원본: <https://github.com/gasbugs/owasp-llm-lab-setup-guide>
-- 동기화 기준 커밋: `369a2473674b504034c6d4a2fbea3bc0cdf5c1c2`
+- 동기화 기준 커밋: `0e785780766dfe13b1b68a51f6476bab85c3c787`
 - 원본 경로:
   - `infrastructure/terraform`
   - `infrastructure/scripts/student`
@@ -46,6 +46,12 @@ GPU AZ 분산, 최소 권한 IAM, 18:00 KST 자동 중지 정책은 유지합니
 인가 설명과 이 저장소의 기본 AWS profile·계정별 AZ·18:00 자동 중지 확장은
 덮어쓰지 않았습니다. 컨테이너 source와 E2E는 복제하지 않고 위 setup 커밋과
 해당 커밋이 게시한 immutable GHCR image를 계속 정본으로 참조합니다.
+
+최신 동기화에서는 LLM06 브라우저 요청 인증과 agent trace 패널 크기 조절을
+반영한 setup 커밋으로 기준을 올렸습니다. 두 변경은 `docker/vuln-agent`와 해당
+unit test에만 있으며, 이 저장소의 복제 대상인 Terraform·학생 스크립트·지정
+문서에는 변경이 없습니다. 실습 실행 시에는 위 setup 저장소가 게시하는 GHCR
+이미지의 최신 태그를 사용합니다.
 
 ## 라이선스
 
