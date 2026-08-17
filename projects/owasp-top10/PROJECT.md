@@ -4,6 +4,16 @@
 Terraform root는 `infrastructure/terraform`이며 방화벽 프로젝트와 상태를 공유하지
 않습니다.
 
+최초 apply에서 6자리 `deployment_id`가 자동 생성되어 Terraform state에 고정됩니다.
+IAM Role, Instance Profile, Budget처럼 계정 전역에서 이름이 겹칠 수 있는 리소스는
+이 ID가 포함된 prefix를 사용합니다. 같은 계정의 east/west 배포는 반드시 별도
+state를 사용해야 서로 다른 ID가 할당됩니다.
+
+`availability_zone`을 지정하지 않으면 `g6.xlarge` 제공 AZ 중 하나를 무작위로
+선택해 state에 고정합니다. AWS가 선택 AZ에서 장시간 인스턴스 ID를 할당하지 않으면
+`docs/TROUBLESHOOTING.md` 절차대로 다른 offering AZ를 명시하고 다시 plan/apply합니다.
+Terraform 단일 apply가 다른 AZ로 자동 이동하지는 않습니다.
+
 ## 실행
 
 기본 AWS profile과 region으로 사전 검사를 수행합니다. 다른 profile을 사용할

@@ -1,3 +1,8 @@
+output "deployment_id" {
+  description = "State-pinned deployment ID used to prevent global IAM name collisions"
+  value       = local.deployment_id
+}
+
 output "firewall_arn" {
   description = "ARN of the centralized AWS Network Firewall"
   value       = aws_networkfirewall_firewall.main.arn

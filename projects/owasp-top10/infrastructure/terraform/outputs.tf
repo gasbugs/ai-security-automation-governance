@@ -9,7 +9,7 @@ output "ami_name" {
 }
 
 output "availability_zone" {
-  description = "계정 ID 기반 자동 분산 또는 availability_zone override로 선택된 AZ"
+  description = "State-pinned random distribution 또는 availability_zone override로 선택된 AZ"
   value       = local.selected_availability_zone
 }
 
@@ -83,4 +83,8 @@ output "alert_topic_arn" {
 output "auto_stop_schedule" {
   description = "자동 EC2 중지 스케줄 map. 기본 모드는 daily_1800."
   value       = var.enable_auto_stop ? local.auto_stop_schedules : null
+}
+output "deployment_id" {
+  description = "State에 고정된 배포별 고유 ID. 리전 간 글로벌 IAM/Budget 이름 충돌을 방지한다."
+  value       = local.deployment_id
 }

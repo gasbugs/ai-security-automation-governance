@@ -1,6 +1,8 @@
 locals {
+  deployment_id      = random_id.deployment.hex
   availability_zones = slice(data.aws_availability_zones.available.names, 0, 2)
-  name_prefix        = "${var.project_name}-${var.environment}"
+  # IAM Role 64자 제한 안에서 spoke 이름을 보존하고 배포 ID를 항상 유지한다.
+  name_prefix = "${substr("${var.project_name}-${var.environment}", 0, 45)}-${local.deployment_id}"
 
   azs = {
     for index, availability_zone in local.availability_zones :
@@ -47,9 +49,20 @@ locals {
   }
 
   common_tags = {
+    Deployment  = local.deployment_id
     Environment = var.environment
     ManagedBy   = "Terraform"
     Project     = var.project_name
     Purpose     = "AuthorizedSecurityTraining"
+  }
+}
+
+resource "random_id" "deployment" {
+  byte_length = 3
+
+  keepers = {
+    environment = var.environment
+    project     = var.project_name
+    region      = var.aws_region
   }
 }

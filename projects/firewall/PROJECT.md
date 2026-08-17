@@ -30,6 +30,10 @@ Spoke B VPC ─┘                       │
 - CloudWatch FLOW/ALERT 로그
 - SSM 전용 테스트 EC2 2대
 
+최초 apply에서 6자리 `deployment_id`가 자동 생성되어 state에 고정됩니다. IAM Role과
+Instance Profile처럼 계정 전역에서 이름이 겹치는 리소스는 이 ID가 포함된 prefix를
+사용합니다.
+
 ## 실행
 
 ```bash
@@ -37,6 +41,14 @@ cp terraform.tfvars.example terraform.tfvars
 ```
 
 `terraform.tfvars`에서 `aws_profile`, region, CIDR 중복 여부를 확인합니다.
+
+같은 계정에 east/west를 동시에 배포할 때는 프로젝트를 리전별 작업 디렉터리로
+복사해 각각 별도 `terraform.tfstate`를 사용합니다. 하나의 state에서 region 값만
+바꾸면 기존 리전 리소스를 이동·교체하는 계획이 만들어집니다.
+
+apply 전에 리전별로 VPC 3개, EIP 2개, NAT Gateway 2개, Transit Gateway 1개와
+Network Firewall 1개를 추가할 쿼터가 있는지 확인합니다. 다계정 배포는 방화벽을
+한 번에 5~10개씩 실행해 API throttling과 endpoint 생성 지연을 줄입니다.
 
 ```bash
 make validate

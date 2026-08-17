@@ -41,18 +41,23 @@ locals {
     toset(data.aws_availability_zones.available.names),
     toset(data.aws_ec2_instance_type_offerings.gpu.locations),
   )))
-  availability_zone_seed = parseint(
-    substr(md5(data.aws_caller_identity.current.account_id), 0, 8),
-    16,
-  )
-  automatic_availability_zone = length(local.gpu_availability_zones) > 0 ? local.gpu_availability_zones[
-    local.availability_zone_seed % length(local.gpu_availability_zones)
-  ] : null
+  automatic_availability_zone = try(random_shuffle.gpu_availability_zones.result[0], null)
   selected_availability_zone = (
     var.availability_zone != null
     ? var.availability_zone
     : local.automatic_availability_zone
   )
+}
+
+resource "random_shuffle" "gpu_availability_zones" {
+  input        = local.gpu_availability_zones
+  result_count = length(local.gpu_availability_zones) > 0 ? 1 : 0
+
+  keepers = {
+    deployment_id = local.deployment_id
+    instance_type = var.instance_type
+    region        = var.region
+  }
 }
 
 resource "aws_subnet" "lab" {

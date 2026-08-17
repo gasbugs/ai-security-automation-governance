@@ -10,7 +10,7 @@ variable "region" {
 }
 
 variable "availability_zone" {
-  description = "GPU 인스턴스를 고정 배포할 AZ. null이면 계정 ID를 기준으로 g6.xlarge 제공 AZ에 결정적으로 분산한다."
+  description = "GPU 인스턴스를 고정 배포할 AZ. null이면 g6.xlarge 제공 AZ 중 하나를 state에 고정해 무작위 분산한다."
   type        = string
   default     = null
   validation {
