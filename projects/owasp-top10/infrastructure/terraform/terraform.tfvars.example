@@ -7,9 +7,8 @@
 aws_profile = "default"
 region      = "us-east-1" # 기본 us-east-1, GPU 수용량 부족 시 us-west-2
 
-# 기본값은 계정 ID를 기준으로 g6.xlarge 제공 AZ 중 하나를 결정적으로 선택한다.
-# 특정 AZ로 고정할 때만 주석을 해제한다.
-# availability_zone = "us-east-1b"
+# 기본값은 g6.xlarge 제공 모든 AZ를 ASG에 전달한다.
+# 장애 분석 목적 외에는 특정 AZ로 고정하지 않는다.
 
 # 강의 식별자 — 리소스 이름·태그·비용 알람에 사용
 course_id = "owasp-llm-2026"

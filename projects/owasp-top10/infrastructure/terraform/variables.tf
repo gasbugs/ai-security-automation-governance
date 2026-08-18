@@ -9,20 +9,6 @@ variable "region" {
   }
 }
 
-variable "availability_zone" {
-  description = "GPU 인스턴스를 고정 배포할 AZ. null이면 g6.xlarge 제공 AZ 중 하나를 state에 고정해 무작위 분산한다."
-  type        = string
-  default     = null
-  validation {
-    condition = (
-      var.availability_zone == null
-      ? true
-      : can(regex("^${var.region}[a-z]$", var.availability_zone))
-    )
-    error_message = "availability_zone은 선택한 region의 표준 AZ여야 합니다. 예: us-east-1b"
-  }
-}
-
 variable "aws_profile" {
   description = "로컬 AWS CLI profile 이름 (null이면 AWS 표준 자격 증명 탐색 순서 사용)"
   type        = string
@@ -150,7 +136,7 @@ variable "allowed_ingress_cidr" {
 }
 
 variable "enable_auto_stop" {
-  description = "true이면 EventBridge가 Lambda를 호출해 Course 태그가 같은 실행 중 EC2를 자동 중지한다."
+  description = "true이면 EventBridge가 Lambda를 호출해 Course 태그가 같은 ASG의 desired capacity를 0으로 낮춘다."
   type        = bool
   default     = true
 }

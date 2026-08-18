@@ -87,9 +87,8 @@ alert_email       = "student@example.com"
 # 기본 인스턴스 타입은 g6.xlarge입니다.
 # instance_type = "g6.xlarge"
 
-# 기본값은 g6.xlarge 제공 AZ 중 하나를 무작위 선택해 state에 고정합니다.
-# 특정 AZ로 고정해야 할 때만 지정합니다.
-# availability_zone = "us-east-1b"
+# 기본값은 g6.xlarge 제공 모든 AZ를 ASG에 전달합니다.
+# 장애 분석 목적 외에는 특정 AZ로 고정하지 않습니다.
 ```
 
 `course_id`와 `student_ids`는 식별값으로 유지합니다. 최초 apply 때 Terraform이
@@ -97,9 +96,8 @@ alert_email       = "student@example.com"
 포함하고 state에 고정합니다. 같은 계정의 east/west 배포는 별도 state를 사용하며,
 생성 후에는 state를 삭제하지 않습니다.
 
-선택 AZ에서 G6 생성이 장시간 진행되지 않으면 무작정 같은 apply를 반복하지 말고
-`docs/TROUBLESHOOTING.md`의 후보 AZ 확인 절차로 다른 AZ를 지정합니다. G/VT vCPU
-쿼터가 4 미만인 경우에는 AZ 변경이 아니라 쿼터 승인이 먼저입니다.
+ASG는 한 AZ의 G6 용량이 부족하면 다른 offering AZ로 재시도합니다. G/VT vCPU
+쿼터가 4 미만인 경우에는 AZ 재시도로 해결되지 않으므로 쿼터 승인이 먼저입니다.
 
 ## 5. VM 생성
 
@@ -109,7 +107,7 @@ terraform plan
 terraform apply -auto-approve
 ```
 
-성공하면 `deployment_id`, `ami_id`, `ami_name`, `availability_zone`, `instance_ids`, `public_ips`, `manual_install_commands`, `start_commands`, `stop_commands`, `ssm_session_commands`가 출력됩니다.
+성공하면 `deployment_id`, `ami_id`, `ami_name`, `availability_zones`, `autoscaling_group_names`, `instance_lookup_commands`, `public_ip_lookup_commands`, `start_commands`, `stop_commands`, `ssm_session_commands`가 출력됩니다.
 
 ## 6. SSM 접속
 

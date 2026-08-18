@@ -42,13 +42,7 @@ aws ec2 describe-instance-type-offerings \
   --query 'InstanceTypeOfferings[].Location' --output text
 ```
 
-인스턴스 생성이 실패한 Terraform state에서 `terraform.tfvars`의 영역을 다른 offering으로 바꾸고 plan부터 다시 실행합니다.
-
-```hcl
-availability_zone = "us-east-1c"
-```
-
-이미 생성에 성공한 state에서 이 값을 바꾸면 subnet과 EC2 교체가 계획될 수 있습니다. `VcpuLimitExceeded`는 재고가 아니라 계정 quota 문제이므로 이 방법 대신 앞 절의 quota 증액을 사용합니다.
+Terraform은 모든 offering AZ subnet을 ASG에 전달합니다. 이전 버전의 `terraform.tfvars`에 `availability_zone`이 남아 있으면 제거하고, ASG Activity에서 실패 AZ 다음에 다른 AZ의 성공 activity가 기록되는지 확인합니다. `VcpuLimitExceeded`는 재고가 아니라 계정 quota 문제이므로 이 방법 대신 앞 절의 quota 증액을 사용합니다.
 
 ## SSM 접속 실패
 
