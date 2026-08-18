@@ -25,9 +25,9 @@ resource "aws_iam_role" "student" {
   name               = "${local.name_prefix}-role-${each.key}"
   assume_role_policy = data.aws_iam_policy_document.student_assume.json
 
-  tags = {
+  tags = merge(local.deployment_tags, {
     Student = each.key
-  }
+  })
 }
 
 # SSM Session Manager 기본 (인바운드 SSH 없이 접근)
@@ -56,4 +56,7 @@ resource "aws_iam_instance_profile" "student" {
   for_each = toset(var.student_ids)
   name     = "${local.name_prefix}-profile-${each.key}"
   role     = aws_iam_role.student[each.key].name
+  tags = merge(local.deployment_tags, {
+    Student = each.key
+  })
 }

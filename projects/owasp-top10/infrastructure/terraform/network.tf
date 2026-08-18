@@ -13,9 +13,9 @@ resource "aws_vpc" "main" {
   enable_dns_support   = true
   enable_dns_hostnames = true
 
-  tags = {
+  tags = merge(local.deployment_tags, {
     Name = "${local.name_prefix}-vpc"
-  }
+  })
 }
 
 data "aws_availability_zones" "available" {
@@ -66,9 +66,9 @@ resource "aws_subnet" "lab" {
   availability_zone       = local.selected_availability_zone
   map_public_ip_on_launch = true # 검증 단계 — 인스턴스가 직접 인터넷 접근
 
-  tags = {
+  tags = merge(local.deployment_tags, {
     Name = "${local.name_prefix}-subnet"
-  }
+  })
 
   lifecycle {
     precondition {
@@ -90,9 +90,9 @@ resource "aws_subnet" "lab" {
 resource "aws_internet_gateway" "main" {
   vpc_id = aws_vpc.main.id
 
-  tags = {
+  tags = merge(local.deployment_tags, {
     Name = "${local.name_prefix}-igw"
-  }
+  })
 }
 
 resource "aws_route_table" "lab" {
@@ -103,9 +103,9 @@ resource "aws_route_table" "lab" {
     gateway_id = aws_internet_gateway.main.id
   }
 
-  tags = {
+  tags = merge(local.deployment_tags, {
     Name = "${local.name_prefix}-rt"
-  }
+  })
 }
 
 resource "aws_route_table_association" "lab" {
@@ -176,10 +176,10 @@ resource "aws_security_group" "student" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  tags = {
+  tags = merge(local.deployment_tags, {
     Name    = "${local.name_prefix}-sg-${each.key}"
     Student = each.key
-  }
+  })
 }
 
 # VPC Endpoint 제거 — IGW + public IP로 외부 통신.

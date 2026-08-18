@@ -3,18 +3,24 @@ provider "aws" {
   # profile = var.aws_profile
 
   default_tags {
-    tags = local.common_tags
+    # Provider configuration must contain only plan-time-known values.
+    tags = local.provider_default_tags
   }
 }
 
 locals {
   deployment_id = random_id.deployment.hex
 
-  common_tags = {
-    Project    = "owasp-top-10-for-llm"
-    Course     = var.course_id
+  provider_default_tags = {
+    Project   = "owasp-top-10-for-llm"
+    Course    = var.course_id
+    ManagedBy = "Terraform"
+  }
+
+  # random_id is unknown during the initial plan, so it must stay out of
+  # provider.default_tags and be applied at the resource level instead.
+  deployment_tags = {
     Deployment = local.deployment_id
-    ManagedBy  = "Terraform"
   }
 
   # IAM Role은 64자 제한이다. role marker(6) + student ID(30)를 보존할 수 있도록

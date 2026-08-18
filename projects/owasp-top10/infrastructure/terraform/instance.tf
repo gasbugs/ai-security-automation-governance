@@ -66,10 +66,10 @@ resource "aws_instance" "student" {
     volume_type           = "gp3"
     delete_on_termination = true
     encrypted             = true
-    tags = {
+    tags = merge(local.deployment_tags, {
       Student = each.key
       Course  = var.course_id
-    }
+    })
   }
 
   metadata_options {
@@ -86,11 +86,11 @@ resource "aws_instance" "student" {
   # commit/image pin은 최초 apply 전에 확정하고, 기존 환경은 수동 재설치하거나 명시적으로 교체한다.
   user_data_replace_on_change = false
 
-  tags = {
+  tags = merge(local.deployment_tags, {
     Name    = "${local.name_prefix}-${each.key}"
     Student = each.key
     Course  = var.course_id
-  }
+  })
 
   lifecycle {
     precondition {

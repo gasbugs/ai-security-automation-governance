@@ -42,6 +42,7 @@ resource "aws_iam_role" "auto_stop_lambda" {
 
   name               = "${local.auto_stop_resource_prefix}-lambda"
   assume_role_policy = data.aws_iam_policy_document.auto_stop_lambda_assume[0].json
+  tags               = local.deployment_tags
 }
 
 resource "aws_iam_role_policy_attachment" "auto_stop_lambda_basic" {
@@ -94,6 +95,7 @@ resource "aws_lambda_function" "auto_stop" {
   filename         = data.archive_file.auto_stop_lambda[0].output_path
   source_code_hash = data.archive_file.auto_stop_lambda[0].output_base64sha256
   timeout          = 60
+  tags             = local.deployment_tags
 
   environment {
     variables = {
@@ -114,6 +116,7 @@ resource "aws_cloudwatch_log_group" "auto_stop" {
 
   name              = "/aws/lambda/${local.auto_stop_resource_prefix}"
   retention_in_days = 1
+  tags              = local.deployment_tags
 }
 
 resource "aws_cloudwatch_event_rule" "auto_stop" {
@@ -122,6 +125,7 @@ resource "aws_cloudwatch_event_rule" "auto_stop" {
   name                = "${local.auto_stop_resource_prefix}-${substr(md5(each.key), 0, 8)}"
   description         = "${var.auto_stop_description} (${var.auto_stop_schedule_mode}): ${each.value}"
   schedule_expression = each.value
+  tags                = local.deployment_tags
 }
 
 resource "aws_cloudwatch_event_target" "auto_stop" {

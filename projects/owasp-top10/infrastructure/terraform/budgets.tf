@@ -4,6 +4,7 @@
 
 resource "aws_sns_topic" "alerts" {
   name = "${local.name_prefix}-alerts"
+  tags = local.deployment_tags
 }
 
 resource "aws_sns_topic_subscription" "alerts_email" {
@@ -19,6 +20,7 @@ resource "aws_budgets_budget" "daily" {
   limit_unit        = "USD"
   time_unit         = "DAILY"
   time_period_start = "${var.course_dates[0]}_00:00"
+  tags              = local.deployment_tags
 
   cost_filter {
     name = "TagKeyValue"
@@ -52,6 +54,7 @@ resource "aws_budgets_budget" "course_total" {
   limit_unit        = "USD"
   time_unit         = "MONTHLY"
   time_period_start = "${substr(var.course_dates[0], 0, 7)}-01_00:00"
+  tags              = local.deployment_tags
 
   cost_filter {
     name = "TagKeyValue"
